@@ -3,55 +3,10 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Fundación Mis Habilidades — Gestión</title>
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyA9PVOIOgPUH6n032V3k-I4RpibUBZBujw",
-    authDomain: "fmh-mishabilidades.firebaseapp.com",
-    projectId: "fmh-mishabilidades",
-    storageBucket: "fmh-mishabilidades.firebasestorage.app",
-    messagingSenderId: "124208084513",
-    appId: "1:124208084513:web:fff3ca5ff599ff4f48d560",
-    measurementId: "G-0TFMJZYBCW"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  window._db = db;
-  window._fbModules = { doc, setDoc, getDoc, collection, getDocs };
-
-  // Cargar datos desde Firebase
-  async function cargarDatos() {
-    try {
-      const snap = await getDoc(doc(db, 'fmh', 'data'));
-      if (snap.exists()) {
-        window.DATA = snap.data();
-      }
-    } catch(e) {
-      console.log('Usando datos locales:', e);
-    }
-  }
-
-  // Guardar datos en Firebase
-  window.saveFirebase = async function() {
-    try {
-      const { doc, setDoc } = window._fbModules;
-      await setDoc(doc(window._db, 'fmh', 'data'), window.DATA);
-    } catch(e) {
-      console.log('Error guardando en Firebase:', e);
-    }
-  };
-
-  await cargarDatos();
-  window._firebaseReady = true;
-  if (window._initApp) window._initApp();
-</script>
+<title>Fundación Mis Habilidades</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif}
-:root{--pink:#E91E8C;--pink2:#F48FB1;--pink3:#FCE4EC;--blue:#1A237E;--green:#2E7D32;--red:#C62828;--yellow:#F9A825;--gray:#f5f5f5;--border:#e0e0e0}
+:root{--pink:#E91E8C;--pink2:#F48FB1;--pink3:#FCE4EC;--blue:#1A237E;--green:#2E7D32;--red:#C62828;--yellow:#F9A825;--border:#e0e0e0}
 body{background:#f9f9f9;color:#333}
 .hidden{display:none!important}
 #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#FCE4EC,#E91E8C22)}
@@ -106,7 +61,6 @@ tr:hover td{background:#fafafa}
 .badge-yellow{background:#FFFDE7;color:var(--yellow)}
 .badge-pink{background:var(--pink3);color:var(--pink)}
 .badge-blue{background:#E3F2FD;color:var(--blue)}
-.badge-purple{background:#EDE7F6;color:#4527A0}
 .btn{padding:8px 16px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer}
 .btn-pink{background:var(--pink);color:#fff}
 .btn-pink:hover{background:#c2185b}
@@ -132,7 +86,6 @@ tr:hover td{background:#fafafa}
 .alert{padding:12px 16px;border-radius:10px;font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:10px}
 .alert-red{background:#FFEBEE;color:var(--red);border-left:4px solid var(--red)}
 .alert-yellow{background:#FFFDE7;color:#795548;border-left:4px solid var(--yellow)}
-.alert-green{background:#E8F5E9;color:var(--green);border-left:4px solid var(--green)}
 .tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
 .tab-btn{padding:8px 18px;border-radius:20px;border:1.5px solid var(--border);background:#fff;font-size:13px;font-weight:500;cursor:pointer;color:#888}
 .tab-btn.active{background:var(--pink);color:#fff;border-color:var(--pink)}
@@ -141,6 +94,9 @@ tr:hover td{background:#fafafa}
 .search-bar input:focus{border-color:var(--pink)}
 .deuda-chip{display:inline-flex;align-items:center;gap:4px;background:#FFEBEE;color:var(--red);padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
 .lock-banner{background:#EDE7F6;border:1px solid #B39DDB;border-radius:10px;padding:12px 16px;font-size:13px;color:#4527A0;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.grupos-check{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.grupo-chip{display:flex;align-items:center;gap:4px;background:#f5f5f5;border:1.5px solid var(--border);border-radius:20px;padding:4px 10px;font-size:12px;cursor:pointer;user-select:none}
+.grupo-chip.selected{background:var(--pink3);border-color:var(--pink);color:var(--pink);font-weight:600}
 @media(max-width:700px){.sidebar{width:60px}.sidebar-logo-text,.nav-item span,.nav-section,.sidebar-footer{display:none}.form-grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -150,12 +106,11 @@ tr:hover td{background:#fafafa}
   <div class="login-box">
     <div class="login-logo">🌸</div>
     <div class="login-title">Mis Habilidades</div>
-    <div class="login-sub">Fundación de Rehabilitación Integral, Formación y Educación</div>
-    <input id="loginUser" placeholder="Usuario" />
-    <input id="loginPass" type="password" placeholder="Contraseña" onkeydown="if(event.key==='Enter')doLogin()" />
-    <p id="loginErr" style="color:#E91E8C;font-size:12px;margin-bottom:8px;display:none">Usuario o contraseña incorrectos</p>
+    <div class="login-sub">Fundación de Rehabilitación Integral, Formación y Educación — Ibagué, Tolima</div>
+    <input id="loginUser" placeholder="Usuario"/>
+    <input id="loginPass" type="password" placeholder="Contraseña" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <p id="loginErr" style="color:var(--pink);font-size:12px;margin-bottom:8px;display:none">Usuario o contraseña incorrectos</p>
     <button class="btn-login" onclick="doLogin()">Ingresar</button>
-    <p style="font-size:11px;color:#ccc;margin-top:8px">Ibagué, Tolima — Colombia</p>
   </div>
 </div>
 
@@ -182,51 +137,72 @@ tr:hover td{background:#fafafa}
   </div>
 </div>
 
-<script>
-// ─── CREDENCIALES FIJAS ───────────────────────────────────────────────────────
-const ADMIN_CRED  = {id:'admin',        pass:'Admin2025',  role:'admin',  nombre:'Presidente'};
-const COORD_CRED  = {id:'coordinadora', pass:'Maritza2026',  role:'coord',  nombre:'Coordinadora'};
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA9PVOIOgPUH6n032V3k-I4RpibUBZBujw",
+  authDomain: "fmh-mishabilidades.firebaseapp.com",
+  projectId: "fmh-mishabilidades",
+  storageBucket: "fmh-mishabilidades.firebasestorage.app",
+  messagingSenderId: "124208084513",
+  appId: "1:124208084513:web:fff3ca5ff599ff4f48d560"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ─── CREDENCIALES ─────────────────────────────────────────────────────────────
+const ADMIN_CRED = {id:'admin', pass:'Admin2025', role:'admin', nombre:'Presidente'};
+const COORD_CRED = {id:'coordinadora', pass:'Maritza2026', role:'coord', nombre:'Coordinadora'};
 
 function getUsers(){
-  const profes = DATA.profesoras
-    .filter(p=>p.usuario&&p.password)
-    .map(p=>({id:p.usuario,pass:p.password,role:'profe',nombre:p.nombre,grupo:p.grupo}));
+  const profes = DATA.profesoras.filter(p=>p.usuario&&p.password)
+    .map(p=>({id:p.usuario, pass:p.password, role:'profe', nombre:p.nombre, grupos:p.grupos||[]}));
   return [ADMIN_CRED, COORD_CRED, ...profes];
 }
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
-let DATA = JSON.parse(localStorage.getItem('fmh_data2')||'null') || {
+window.DATA = {
   grupos:['BABYLAND','TODDLERS','KINDER 3','KINDER 4','TRANSITION','FIRST','SECOND','THIRD','FOURTH','FIFTH','UAI'],
-  profesoras:[
-    {id:'p1',nombre:'Ana García',grupo:'TRANSITION',usuario:'ana.garcia',password:'Profe2025'},
-    {id:'p2',nombre:'María López',grupo:'FIRST',usuario:'maria.lopez',password:'Profe2025'},
-  ],
-  estudiantes:[
-    {id:'e1',nombre:'Sofía Martínez',grupo:'TRANSITION',modalidad:'TC',alimentacion:'incluida',valorMensualidad:350000,valorAlmuerzo:8000,saldoAlmuerzos:5,deudaAlmuerzos:0,mensualidadPagada:true},
-    {id:'e2',nombre:'Juan Pérez',grupo:'TRANSITION',modalidad:'MT',alimentacion:'dia',valorMensualidad:200000,valorAlmuerzo:7000,saldoAlmuerzos:0,deudaAlmuerzos:3,mensualidadPagada:false},
-    {id:'e3',nombre:'Laura Gómez',grupo:'FIRST',modalidad:'TC',alimentacion:'no',valorMensualidad:300000,valorAlmuerzo:8000,saldoAlmuerzos:0,deudaAlmuerzos:0,mensualidadPagada:true},
-    {id:'e4',nombre:'Carlos Ruiz',grupo:'FIRST',modalidad:'TC',alimentacion:'incluida',valorMensualidad:380000,valorAlmuerzo:9000,saldoAlmuerzos:2,deudaAlmuerzos:0,mensualidadPagada:true},
-  ],
+  profesoras:[],
+  estudiantes:[],
   registros:[],
   pagos:[],
 };
-function save(){
-  localStorage.setItem('fmh_data2', JSON.stringify(DATA));
-  if (window.saveFirebase) window.saveFirebase();
-}
 
-let currentUser=null, currentPage='resumen';
+// Firebase save/load
+async function saveFirebase(){
+  try { await setDoc(doc(db,'fmh','data'), JSON.parse(JSON.stringify(DATA))); } catch(e){ console.log('FB save error:',e); }
+}
+async function loadFirebase(){
+  try {
+    const snap = await getDoc(doc(db,'fmh','data'));
+    if(snap.exists()) window.DATA = snap.data();
+  } catch(e){ console.log('FB load error:',e); }
+}
+window.save = function(){ saveFirebase(); localStorage.setItem('fmh_v3', JSON.stringify(DATA)); };
+
+// Cargar datos
+const local = localStorage.getItem('fmh_v3');
+if(local) window.DATA = JSON.parse(local);
+await loadFirebase();
+
+let currentUser = null, currentPage = 'resumen';
 
 // ─── PERMISOS ─────────────────────────────────────────────────────────────────
 const can = {
-  eliminarEstudiante: ()=> currentUser?.role==='admin',
-  eliminarProfesora:  ()=> currentUser?.role==='admin',
-  cambiarCredenciales:()=> currentUser?.role==='admin',
-  verFinanciero:      ()=> ['admin','coord'].includes(currentUser?.role),
-  registrarPagos:     ()=> ['admin','coord'].includes(currentUser?.role),
-  agregarEstudiante:  ()=> ['admin','coord'].includes(currentUser?.role),
-  editarEstudiante:   ()=> ['admin','coord'].includes(currentUser?.role),
-  verAlertas:         ()=> ['admin','coord'].includes(currentUser?.role),
+  crearEstudiante:  ()=> currentUser?.role==='admin',
+  eliminarEstudiante:()=> currentUser?.role==='admin',
+  editarEstudiante: ()=> ['admin','coord'].includes(currentUser?.role),
+  crearProfesora:   ()=> currentUser?.role==='admin',
+  eliminarProfesora:()=> currentUser?.role==='admin',
+  asignarGrupos:    ()=> ['admin','coord'].includes(currentUser?.role),
+  verFinanciero:    ()=> ['admin','coord'].includes(currentUser?.role),
+  registrarPagos:   ()=> ['admin','coord'].includes(currentUser?.role),
+  verConfig:        ()=> currentUser?.role==='admin',
+  verAlertas:       ()=> ['admin','coord'].includes(currentUser?.role),
 };
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
@@ -239,15 +215,16 @@ function doLogin(){
   currentUser=found;
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  const roleNames={admin:'Presidente',coord:'Coordinadora',profe:'Profesora'};
-  const roleClasses={admin:'role-admin',coord:'role-coord',profe:'role-profe'};
+  const rn={admin:'Presidente',coord:'Coordinadora',profe:'Profesora'};
+  const rc={admin:'role-admin',coord:'role-coord',profe:'role-profe'};
   const rl=document.getElementById('roleLabel');
-  rl.textContent=roleNames[found.role];
-  rl.className='badge-role '+roleClasses[found.role];
+  rl.textContent=rn[found.role]; rl.className='badge-role '+rc[found.role];
   document.getElementById('userLabel').textContent=found.nombre;
   document.getElementById('todayDate').textContent=new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'});
   buildNav(); navigate('resumen');
 }
+window.doLogin=doLogin;
+
 function doLogout(){
   currentUser=null;
   document.getElementById('app').classList.add('hidden');
@@ -255,6 +232,7 @@ function doLogout(){
   document.getElementById('loginUser').value='';
   document.getElementById('loginPass').value='';
 }
+window.doLogout=doLogout;
 
 // ─── NAV ──────────────────────────────────────────────────────────────────────
 function buildNav(){
@@ -263,23 +241,13 @@ function buildNav(){
   let items=[];
   if(r==='admin'||r==='coord'){
     items=[
-      {section:'General'},
-      {id:'resumen',ico:'📊',label:'Resumen'},
-      {id:'registro',ico:'✅',label:'Registro Diario'},
-      {section:'Gestión'},
-      {id:'estudiantes',ico:'👦',label:'Estudiantes'},
-      {id:'profesoras',ico:'👩‍🏫',label:'Profesoras'},
-      {section:'Finanzas'},
-      {id:'pagos',ico:'💰',label:'Pagos y Deudas'},
-      {id:'reportes',ico:'📄',label:'Reportes PDF'},
+      {section:'General'},{id:'resumen',ico:'📊',label:'Resumen'},{id:'registro',ico:'✅',label:'Registro Diario'},
+      {section:'Gestión'},{id:'estudiantes',ico:'👦',label:'Estudiantes'},{id:'profesoras',ico:'👩‍🏫',label:'Profesoras'},
+      {section:'Finanzas'},{id:'pagos',ico:'💰',label:'Pagos y Deudas'},{id:'reportes',ico:'📄',label:'Reportes PDF'},
     ];
     if(r==='admin') items.push({section:'Configuración'},{id:'config',ico:'⚙️',label:'Configuración'});
   } else {
-    items=[
-      {id:'resumen',ico:'📊',label:'Resumen'},
-      {id:'registro',ico:'✅',label:'Registro Diario'},
-      {id:'reportes',ico:'📄',label:'Mis Reportes'},
-    ];
+    items=[{id:'resumen',ico:'📊',label:'Resumen'},{id:'registro',ico:'✅',label:'Registro Diario'},{id:'reportes',ico:'📄',label:'Mis Reportes'}];
   }
   nav.innerHTML=items.map(i=>i.section
     ?`<div class="nav-section">${i.section}</div>`
@@ -290,8 +258,7 @@ function buildNav(){
 function navigate(page){
   currentPage=page;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  const el=document.getElementById('nav_'+page);
-  if(el)el.classList.add('active');
+  const el=document.getElementById('nav_'+page); if(el)el.classList.add('active');
   const titles={resumen:'Resumen del Día',registro:'Registro Diario',estudiantes:'Gestión de Estudiantes',profesoras:'Gestión de Profesoras',pagos:'Pagos y Deudas',reportes:'Reportes PDF',config:'Configuración'};
   document.getElementById('pageTitle').textContent=titles[page]||page;
   const c=document.getElementById('mainContent');
@@ -303,161 +270,159 @@ function navigate(page){
   else if(page==='reportes') renderReportes(c);
   else if(page==='config') renderConfig(c);
 }
+window.navigate=navigate;
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const todayStr=()=>new Date().toISOString().slice(0,10);
 const fmt=v=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(v);
-function getRegistrosHoy(){return DATA.registros.filter(r=>r.fecha===todayStr())}
+function getRegistrosHoy(){return (DATA.registros||[]).filter(r=>r.fecha===todayStr())}
 function getRegistroEst(estId){return getRegistrosHoy().find(r=>r.estId===estId)}
+function getMisGrupos(){
+  if(currentUser.role==='profe') return currentUser.grupos||[];
+  return DATA.grupos||[];
+}
+function getMisEstudiantes(){
+  const g=getMisGrupos();
+  if(currentUser.role==='profe') return (DATA.estudiantes||[]).filter(e=>g.includes(e.grupo));
+  return DATA.estudiantes||[];
+}
 
 // ─── RESUMEN ──────────────────────────────────────────────────────────────────
 function renderResumen(c){
+  const ests=getMisEstudiantes();
   const hoy=getRegistrosHoy();
-  const asistieron=hoy.filter(r=>r.asistio).length;
-  const almorzaron=hoy.filter(r=>r.almorzó).length;
-  const total=DATA.estudiantes.length;
-
+  const asistieron=hoy.filter(r=>r.asistio&&ests.find(e=>e.id===r.estId)).length;
+  const almorzaron=hoy.filter(r=>r.almorzó&&ests.find(e=>e.id===r.estId)).length;
   let alertasHTML='';
   if(can.verAlertas()){
-    const sinSaldo=DATA.estudiantes.filter(e=>e.alimentacion!=='no'&&e.alimentacion!=='incluida'&&e.saldoAlmuerzos<=2);
-    const deudaMens=DATA.estudiantes.filter(e=>!e.mensualidadPagada);
-    const conDeudaAlm=DATA.estudiantes.filter(e=>e.deudaAlmuerzos>0);
-    if(sinSaldo.length) alertasHTML+=`<div class="alert alert-yellow">⚠️ <b>${sinSaldo.length} estudiante(s)</b> con saldo bajo o en cero: ${sinSaldo.map(e=>e.nombre).join(', ')}</div>`;
+    const sinSaldo=(DATA.estudiantes||[]).filter(e=>e.alimentacion!=='no'&&e.alimentacion!=='incluida'&&e.saldoAlmuerzos<=2);
+    const deudaMens=(DATA.estudiantes||[]).filter(e=>!e.mensualidadPagada);
+    if(sinSaldo.length) alertasHTML+=`<div class="alert alert-yellow">⚠️ <b>${sinSaldo.length} estudiante(s)</b> con saldo bajo: ${sinSaldo.map(e=>e.nombre).join(', ')}</div>`;
     if(deudaMens.length) alertasHTML+=`<div class="alert alert-red">🔴 <b>${deudaMens.length} estudiante(s)</b> con mensualidad pendiente</div>`;
-    if(conDeudaAlm.length) alertasHTML+=`<div class="alert alert-red">🍽️ <b>${conDeudaAlm.length} estudiante(s)</b> con deuda de almuerzos</div>`;
   }
-
   const grupos={};
-  DATA.estudiantes.forEach(e=>{
+  ests.forEach(e=>{
     if(!grupos[e.grupo])grupos[e.grupo]={total:0,asistieron:0,almorzaron:0};
     grupos[e.grupo].total++;
     const reg=getRegistroEst(e.id);
     if(reg&&reg.asistio)grupos[e.grupo].asistieron++;
     if(reg&&reg.almorzó)grupos[e.grupo].almorzaron++;
   });
-
-  c.innerHTML=`
-    ${alertasHTML}
-    <div class="stats-grid">
-      <div class="stat-card"><div class="num">${total}</div><div class="lbl">Estudiantes</div></div>
-      <div class="stat-card blue"><div class="num">${asistieron}</div><div class="lbl">Asistieron hoy</div></div>
-      <div class="stat-card green"><div class="num">${almorzaron}</div><div class="lbl">Almorzaron hoy</div></div>
-      <div class="stat-card"><div class="num">${DATA.grupos.length}</div><div class="lbl">Grupos</div></div>
-      ${can.verFinanciero()?`<div class="stat-card red"><div class="num">${DATA.estudiantes.filter(e=>!e.mensualidadPagada||e.deudaAlmuerzos>0).length}</div><div class="lbl">Con deudas</div></div>`:''}
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">📋 Resumen por Grupo — Hoy</span></div>
-      <table>
-        <tr><th>Grupo</th><th>Total</th><th>Asistieron</th><th>Almorzaron</th><th>Asistencia %</th></tr>
-        ${Object.entries(grupos).map(([g,d])=>`<tr>
-          <td><span class="badge badge-pink">${g}</span></td>
-          <td>${d.total}</td><td>${d.asistieron}</td><td>${d.almorzaron}</td>
-          <td><div style="display:flex;align-items:center;gap:8px">
-            <div class="saldo-bar" style="width:80px"><div class="saldo-fill" style="width:${d.total?Math.round(d.asistieron/d.total*100):0}%;background:var(--pink)"></div></div>
-            ${d.total?Math.round(d.asistieron/d.total*100):0}%
-          </div></td>
-        </tr>`).join('')}
-      </table>
-    </div>`;
+  c.innerHTML=`${alertasHTML}
+  <div class="stats-grid">
+    <div class="stat-card"><div class="num">${ests.length}</div><div class="lbl">Estudiantes</div></div>
+    <div class="stat-card blue"><div class="num">${asistieron}</div><div class="lbl">Asistieron hoy</div></div>
+    <div class="stat-card green"><div class="num">${almorzaron}</div><div class="lbl">Almorzaron hoy</div></div>
+    ${can.verFinanciero()?`<div class="stat-card red"><div class="num">${(DATA.estudiantes||[]).filter(e=>!e.mensualidadPagada||e.deudaAlmuerzos>0).length}</div><div class="lbl">Con deudas</div></div>`:''}
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">📋 Resumen por Grupo — Hoy</span></div>
+    <table><tr><th>Grupo</th><th>Total</th><th>Asistieron</th><th>Almorzaron</th><th>%</th></tr>
+    ${Object.entries(grupos).map(([g,d])=>`<tr>
+      <td><span class="badge badge-pink">${g}</span></td><td>${d.total}</td><td>${d.asistieron}</td><td>${d.almorzaron}</td>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div class="saldo-bar" style="width:80px"><div class="saldo-fill" style="width:${d.total?Math.round(d.asistieron/d.total*100):0}%;background:var(--pink)"></div></div>
+        ${d.total?Math.round(d.asistieron/d.total*100):0}%
+      </div></td>
+    </tr>`).join('')}
+    </table>
+  </div>`;
 }
 
 // ─── REGISTRO ─────────────────────────────────────────────────────────────────
 function renderRegistro(c){
-  const isProfe=currentUser.role==='profe';
-  let ests=isProfe?DATA.estudiantes.filter(e=>e.grupo===currentUser.grupo):DATA.estudiantes;
-  const grupos=[...new Set(DATA.estudiantes.map(e=>e.grupo))];
+  const ests=getMisEstudiantes();
+  const grupos=[...new Set(ests.map(e=>e.grupo))];
   const selGrupo=window._regGrupo||'todos';
-  if(!isProfe&&selGrupo!=='todos') ests=DATA.estudiantes.filter(e=>e.grupo===selGrupo);
-
+  const filtered=selGrupo==='todos'?ests:ests.filter(e=>e.grupo===selGrupo);
   c.innerHTML=`<div class="card">
     <div class="card-header"><span class="card-title">✅ Registro — ${new Date().toLocaleDateString('es-CO')}</span></div>
     <div style="padding:14px">
-      ${!isProfe?`<div style="margin-bottom:14px;display:flex;align-items:center;gap:10px">
+      <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px">
         <label style="font-size:13px;font-weight:600">Grupo:</label>
         <select onchange="window._regGrupo=this.value;navigate('registro')" style="padding:6px 12px;border-radius:8px;border:1.5px solid #e0e0e0;font-size:13px">
-          <option value="todos" ${selGrupo==='todos'?'selected':''}>Todos</option>
+          <option value="todos" ${selGrupo==='todos'?'selected':''}>Todos mis grupos</option>
           ${grupos.map(g=>`<option value="${g}" ${selGrupo===g?'selected':''}>${g}</option>`).join('')}
         </select>
-      </div>`:''}
-      <table>
-        <tr><th>Estudiante</th><th>Grupo</th><th>Modalidad</th><th>Asistió</th><th>Almorzó</th><th>Estado alimentación</th></tr>
-        ${ests.map(e=>{
-          const reg=getRegistroEst(e.id)||{};
-          const sc=e.saldoAlmuerzos>3?'var(--green)':e.saldoAlmuerzos>0?'var(--yellow)':'var(--red)';
-          return `<tr>
-            <td><b>${e.nombre}</b></td>
-            <td><span class="badge badge-pink">${e.grupo}</span></td>
-            <td><span class="badge badge-blue">${e.modalidad==='TC'?'T. Completo':'M. Tiempo'}</span></td>
-            <td><input type="checkbox" ${reg.asistio?'checked':''} onchange="toggleReg('${e.id}','asistio',this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--pink)"/></td>
-            <td>${e.alimentacion==='no'?'<span style="color:#aaa;font-size:12px">N/A</span>':`<input type="checkbox" ${reg.almorzó?'checked':''} onchange="toggleReg('${e.id}','almorzó',this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green)"/>`}</td>
-            <td>${e.alimentacion==='no'?'<span class="badge badge-blue">Sin alimentación</span>':
-              e.alimentacion==='incluida'?'<span class="badge badge-green">Incluida</span>':
-              `<span style="font-size:12px">Saldo: <b style="color:${sc}">${e.saldoAlmuerzos}</b> días
-              ${e.deudaAlmuerzos>0?`<span class="deuda-chip">⚠️ Debe ${e.deudaAlmuerzos}</span>`:''}</span>`
-            }</td>
-          </tr>`;
-        }).join('')}
+      </div>
+      <table><tr><th>Estudiante</th><th>Grupo</th><th>Modalidad</th><th>Asistió</th><th>Almorzó</th><th>Estado alimentación</th></tr>
+      ${filtered.map(e=>{
+        const reg=getRegistroEst(e.id)||{};
+        const sc=e.saldoAlmuerzos>3?'var(--green)':e.saldoAlmuerzos>0?'var(--yellow)':'var(--red)';
+        return `<tr>
+          <td><b>${e.nombre}</b></td>
+          <td><span class="badge badge-pink">${e.grupo}</span></td>
+          <td><span class="badge badge-blue">${e.modalidad==='TC'?'T. Completo':'M. Tiempo'}</span></td>
+          <td><input type="checkbox" ${reg.asistio?'checked':''} onchange="toggleReg('${e.id}','asistio',this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--pink)"/></td>
+          <td>${e.alimentacion==='no'?'<span style="color:#aaa;font-size:12px">N/A</span>':`<input type="checkbox" ${reg.almorzó?'checked':''} onchange="toggleReg('${e.id}','almorzó',this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green)"/>`}</td>
+          <td>${e.alimentacion==='no'?'<span class="badge badge-blue">Sin alimentación</span>':
+            e.alimentacion==='incluida'?'<span class="badge badge-green">Incluida</span>':
+            `<span style="font-size:12px">Saldo: <b style="color:${sc}">${e.saldoAlmuerzos}</b> días ${e.deudaAlmuerzos>0?`<span class="deuda-chip">⚠️ Debe ${e.deudaAlmuerzos}</span>`:''}</span>`
+          }</td>
+        </tr>`;
+      }).join('')}
       </table>
     </div>
   </div>`;
 }
-
-function toggleReg(estId,campo,val){
+window.toggleReg=function(estId,campo,val){
   const hoy=todayStr();
+  if(!DATA.registros) DATA.registros=[];
   let reg=DATA.registros.find(r=>r.estId===estId&&r.fecha===hoy);
   if(!reg){reg={estId,fecha:hoy,asistio:false,'almorzó':false};DATA.registros.push(reg);}
   reg[campo]=val;
   if(campo==='almorzó'){
-    const est=DATA.estudiantes.find(e=>e.id===estId);
+    const est=(DATA.estudiantes||[]).find(e=>e.id===estId);
     if(est&&est.alimentacion!=='no'&&est.alimentacion!=='incluida'){
       if(val){if(est.saldoAlmuerzos>0)est.saldoAlmuerzos--;else est.deudaAlmuerzos++;}
       else{if(est.deudaAlmuerzos>0)est.deudaAlmuerzos--;else est.saldoAlmuerzos++;}
     }
   }
   save(); navigate('registro');
-}
+};
 
 // ─── ESTUDIANTES ──────────────────────────────────────────────────────────────
 function renderEstudiantes(c){
   const q=(window._estQ||'').toLowerCase();
-  const ests=DATA.estudiantes.filter(e=>e.nombre.toLowerCase().includes(q)||e.grupo.toLowerCase().includes(q));
+  const ests=(DATA.estudiantes||[]).filter(e=>e.nombre.toLowerCase().includes(q)||e.grupo.toLowerCase().includes(q));
   c.innerHTML=`
     <div class="btn-group" style="margin-bottom:16px">
-      ${can.agregarEstudiante()?`<button class="btn btn-pink" onclick="openModalEst()">+ Agregar Estudiante</button>`:''}
+      ${can.crearEstudiante()?`<button class="btn btn-pink" onclick="openModalEst()">+ Agregar Estudiante</button>`:''}
+      ${!can.crearEstudiante()?`<div class="lock-banner">🔒 Solo el <b>Presidente</b> puede agregar o eliminar estudiantes.</div>`:''}
     </div>
-    <div class="search-bar"><input placeholder="Buscar por nombre o grupo..." value="${window._estQ||''}" oninput="window._estQ=this.value;navigate('estudiantes')"/></div>
+    <div class="search-bar"><input placeholder="Buscar..." value="${window._estQ||''}" oninput="window._estQ=this.value;navigate('estudiantes')"/></div>
     <div class="card">
       <div class="card-header"><span class="card-title">👦 Estudiantes (${ests.length})</span></div>
-      <table>
-        <tr><th>Nombre</th><th>Grupo</th><th>Modalidad</th><th>Alimentación</th>${can.verFinanciero()?'<th>Mensualidad</th><th>Saldo/Deuda</th>':''}<th>Acciones</th></tr>
-        ${ests.map(e=>`<tr>
-          <td><b>${e.nombre}</b></td>
-          <td><span class="badge badge-pink">${e.grupo}</span></td>
-          <td>${e.modalidad==='TC'?'T. Completo':'M. Tiempo'}</td>
-          <td>${e.alimentacion==='incluida'?'<span class="badge badge-green">Incluida</span>':e.alimentacion==='dia'?'<span class="badge badge-yellow">Por día</span>':'<span class="badge badge-blue">No incluida</span>'}</td>
-          ${can.verFinanciero()?`
-          <td>${fmt(e.valorMensualidad)}<br><span class="badge ${e.mensualidadPagada?'badge-green':'badge-red'}">${e.mensualidadPagada?'✅ Pagada':'❌ Pendiente'}</span></td>
-          <td>${e.alimentacion==='no'?'—':e.alimentacion==='incluida'?'<span class="badge badge-green">Incluida</span>':`
-            <span style="color:${e.saldoAlmuerzos>3?'var(--green)':e.saldoAlmuerzos>0?'var(--yellow)':'var(--red)'};font-weight:700">${e.saldoAlmuerzos} días</span>
-            ${e.deudaAlmuerzos>0?`<br><span class="deuda-chip">Debe ${e.deudaAlmuerzos} días</span>`:''}`}
-          </td>`:''}
-          <td><div class="btn-group">
-            ${can.editarEstudiante()?`<button class="btn btn-blue btn-sm" onclick="openModalEst('${e.id}')">✏️ Editar</button>`:''}
-            ${can.eliminarEstudiante()?`<button class="btn btn-red btn-sm" onclick="deleteEst('${e.id}')">🗑️</button>`:''}
-          </div></td>
-        </tr>`).join('')}
+      <table><tr><th>Nombre</th><th>Grupo</th><th>Modalidad</th><th>Alimentación</th>${can.verFinanciero()?'<th>Mensualidad</th><th>Saldo/Deuda</th>':''}<th>Acciones</th></tr>
+      ${ests.map(e=>`<tr>
+        <td><b>${e.nombre}</b></td>
+        <td><span class="badge badge-pink">${e.grupo}</span></td>
+        <td>${e.modalidad==='TC'?'T. Completo':'M. Tiempo'}</td>
+        <td>${e.alimentacion==='incluida'?'<span class="badge badge-green">Incluida</span>':e.alimentacion==='dia'?'<span class="badge badge-yellow">Por día</span>':'<span class="badge badge-blue">No incluida</span>'}</td>
+        ${can.verFinanciero()?`
+        <td>${fmt(e.valorMensualidad)}<br><span class="badge ${e.mensualidadPagada?'badge-green':'badge-red'}">${e.mensualidadPagada?'✅ Pagada':'❌ Pendiente'}</span></td>
+        <td>${e.alimentacion==='no'?'—':e.alimentacion==='incluida'?'<span class="badge badge-green">Incluida</span>':`
+          <span style="color:${e.saldoAlmuerzos>3?'var(--green)':e.saldoAlmuerzos>0?'var(--yellow)':'var(--red)'};font-weight:700">${e.saldoAlmuerzos} días</span>
+          ${e.deudaAlmuerzos>0?`<br><span class="deuda-chip">Debe ${e.deudaAlmuerzos} días</span>`:''}`}
+        </td>`:''}
+        <td><div class="btn-group">
+          ${can.editarEstudiante()?`<button class="btn btn-blue btn-sm" onclick="openModalEst('${e.id}')">✏️ Editar</button>`:''}
+          ${can.eliminarEstudiante()?`<button class="btn btn-red btn-sm" onclick="deleteEst('${e.id}')">🗑️</button>`:''}
+        </div></td>
+      </tr>`).join('')}
       </table>
     </div>`;
 }
+window.renderEstudiantes=renderEstudiantes;
 
-function openModalEst(id){
-  const e=id?DATA.estudiantes.find(x=>x.id===id):{};
+window.openModalEst=function(id){
+  const e=id?(DATA.estudiantes||[]).find(x=>x.id===id):{};
   const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()">
   <div class="modal">
     <div class="modal-header"><span class="modal-title">${id?'Editar':'Agregar'} Estudiante</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
     <div class="form-grid">
       <div class="form-group form-full"><label>Nombre completo</label><input id="mNombre" value="${e.nombre||''}"/></div>
-      <div class="form-group"><label>Grupo</label><select id="mGrupo">${DATA.grupos.map(g=>`<option ${e.grupo===g?'selected':''}>${g}</option>`).join('')}</select></div>
+      <div class="form-group"><label>Grupo</label><select id="mGrupo">${(DATA.grupos||[]).map(g=>`<option ${e.grupo===g?'selected':''}>${g}</option>`).join('')}</select></div>
       <div class="form-group"><label>Modalidad</label><select id="mMod"><option value="TC" ${e.modalidad==='TC'?'selected':''}>Tiempo Completo</option><option value="MT" ${e.modalidad==='MT'?'selected':''}>Medio Tiempo</option></select></div>
       <div class="form-group"><label>Alimentación</label><select id="mAlim"><option value="incluida" ${e.alimentacion==='incluida'?'selected':''}>Incluida en mensualidad</option><option value="dia" ${e.alimentacion==='dia'?'selected':''}>Paga por día/semana</option><option value="no" ${e.alimentacion==='no'?'selected':''}>No incluida</option></select></div>
       <div class="form-group"><label>Valor mensualidad ($)</label><input id="mValM" type="number" value="${e.valorMensualidad||0}"/></div>
@@ -471,11 +436,12 @@ function openModalEst(id){
     </div>
   </div></div>`;
   document.body.insertAdjacentHTML('beforeend',html);
-}
+};
 
-function saveEst(id){
+window.saveEst=function(id){
   const n=document.getElementById('mNombre').value.trim();
   if(!n)return alert('Ingresa el nombre');
+  if(!DATA.estudiantes)DATA.estudiantes=[];
   if(id){
     const e=DATA.estudiantes.find(x=>x.id===id);
     e.nombre=n;e.grupo=document.getElementById('mGrupo').value;e.modalidad=document.getElementById('mMod').value;
@@ -489,44 +455,54 @@ function saveEst(id){
       deudaAlmuerzos:0,mensualidadPagada:document.getElementById('mMensPag').value==='1'});
   }
   save();document.querySelector('.modal-overlay').remove();navigate('estudiantes');
-}
-function deleteEst(id){if(!confirm('¿Eliminar este estudiante? Esta acción solo la puede realizar el Presidente.'))return;DATA.estudiantes=DATA.estudiantes.filter(e=>e.id!==id);save();navigate('estudiantes');}
+};
+
+window.deleteEst=function(id){
+  if(!confirm('¿Eliminar este estudiante?'))return;
+  DATA.estudiantes=(DATA.estudiantes||[]).filter(e=>e.id!==id);
+  save();navigate('estudiantes');
+};
 
 // ─── PROFESORAS ───────────────────────────────────────────────────────────────
 function renderProfesoras(c){
-  let bannerHTML='';
-  if(currentUser.role==='coord') bannerHTML=`<div class="lock-banner">🔒 Solo el <b>Presidente</b> puede eliminar profesoras. Puedes agregar y editar.</div>`;
+  const puedeCrear=can.crearProfesora();
+  const puedeAsignar=can.asignarGrupos();
   c.innerHTML=`
-    ${bannerHTML}
-    <div style="margin-bottom:16px"><button class="btn btn-pink" onclick="openModalProfe()">+ Agregar Profesora</button></div>
+    ${puedeCrear?`<div style="margin-bottom:16px"><button class="btn btn-pink" onclick="openModalProfe()">+ Agregar Profesora</button></div>`:`<div class="lock-banner">🔒 Solo el <b>Presidente</b> puede crear o eliminar profesoras.</div>`}
     <div class="card">
-      <div class="card-header"><span class="card-title">👩‍🏫 Profesoras (${DATA.profesoras.length})</span></div>
-      <table>
-        <tr><th>Nombre</th><th>Grupo</th><th>Usuario</th><th>Contraseña</th><th>Acciones</th></tr>
-        ${DATA.profesoras.map(p=>`<tr>
-          <td><b>${p.nombre}</b></td>
-          <td><span class="badge badge-pink">${p.grupo}</span></td>
-          <td><span class="badge badge-blue">${p.usuario||'Sin usuario'}</span></td>
-          <td><span style="color:#aaa;font-size:12px">${p.password?'••••••••':'Sin contraseña'}</span></td>
-          <td><div class="btn-group">
-            <button class="btn btn-blue btn-sm" onclick="openModalProfe('${p.id}')">✏️ Editar</button>
-            ${can.eliminarProfesora()?`<button class="btn btn-red btn-sm" onclick="deleteProfe('${p.id}')">🗑️</button>`:'<span style="font-size:11px;color:#aaa">🔒</span>'}
-          </div></td>
-        </tr>`).join('')}
+      <div class="card-header"><span class="card-title">👩‍🏫 Profesoras (${(DATA.profesoras||[]).length})</span></div>
+      <table><tr><th>Nombre</th><th>Usuario</th><th>Grupos asignados</th><th>Contraseña</th><th>Acciones</th></tr>
+      ${(DATA.profesoras||[]).map(p=>`<tr>
+        <td><b>${p.nombre}</b></td>
+        <td><span class="badge badge-blue">${p.usuario||'Sin usuario'}</span></td>
+        <td>${(p.grupos||[]).map(g=>`<span class="badge badge-pink" style="margin:2px">${g}</span>`).join('')||'<span style="color:#aaa">Sin grupos</span>'}</td>
+        <td><span style="color:#aaa;font-size:12px">${p.password?'••••••••':'Sin contraseña'}</span></td>
+        <td><div class="btn-group">
+          ${puedeCrear?`<button class="btn btn-blue btn-sm" onclick="openModalProfe('${p.id}')">✏️ Editar</button>`:''}
+          ${puedeAsignar&&!puedeCrear?`<button class="btn btn-blue btn-sm" onclick="openModalAsignar('${p.id}')">📋 Grupos</button>`:''}
+          ${can.eliminarProfesora()?`<button class="btn btn-red btn-sm" onclick="deleteProfe('${p.id}')">🗑️</button>`:''}
+        </div></td>
+      </tr>`).join('')}
       </table>
     </div>`;
 }
 
-function openModalProfe(id){
-  const p=id?DATA.profesoras.find(x=>x.id===id):{};
+window.openModalProfe=function(id){
+  const p=id?(DATA.profesoras||[]).find(x=>x.id===id):{};
+  const gruposSeleccionados=p.grupos||[];
   const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()">
   <div class="modal">
     <div class="modal-header"><span class="modal-title">${id?'Editar':'Agregar'} Profesora</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
     <div class="form-grid">
       <div class="form-group form-full"><label>Nombre completo</label><input id="pNombre" value="${p.nombre||''}"/></div>
-      <div class="form-group"><label>Grupo a cargo</label><select id="pGrupo">${DATA.grupos.map(g=>`<option ${p.grupo===g?'selected':''}>${g}</option>`).join('')}</select></div>
       <div class="form-group"><label>Usuario de acceso</label><input id="pUser" value="${p.usuario||''}"/></div>
       <div class="form-group"><label>Contraseña</label><input id="pPass" type="password" value="${p.password||''}"/></div>
+      <div class="form-group form-full">
+        <label>Grupos a cargo (selecciona uno o varios)</label>
+        <div class="grupos-check" id="gruposCheck">
+          ${(DATA.grupos||[]).map(g=>`<div class="grupo-chip ${gruposSeleccionados.includes(g)?'selected':''}" onclick="toggleGrupoChip(this,'${g}')" data-grupo="${g}">${g}</div>`).join('')}
+        </div>
+      </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
@@ -534,25 +510,65 @@ function openModalProfe(id){
     </div>
   </div></div>`;
   document.body.insertAdjacentHTML('beforeend',html);
-}
-function saveProfe(id){
+};
+
+window.toggleGrupoChip=function(el,g){el.classList.toggle('selected');};
+
+window.openModalAsignar=function(id){
+  const p=(DATA.profesoras||[]).find(x=>x.id===id);
+  const gruposSeleccionados=p.grupos||[];
+  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header"><span class="modal-title">📋 Asignar grupos — ${p.nombre}</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="form-group">
+      <label>Grupos a cargo (selecciona uno o varios)</label>
+      <div class="grupos-check" id="gruposCheck">
+        ${(DATA.grupos||[]).map(g=>`<div class="grupo-chip ${gruposSeleccionados.includes(g)?'selected':''}" onclick="toggleGrupoChip(this,'${g}')" data-grupo="${g}">${g}</div>`).join('')}
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+      <button class="btn btn-pink" onclick="saveGruposProfe('${id}')">Guardar</button>
+    </div>
+  </div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+
+window.saveGruposProfe=function(id){
+  const p=(DATA.profesoras||[]).find(x=>x.id===id);
+  p.grupos=Array.from(document.querySelectorAll('#gruposCheck .grupo-chip.selected')).map(el=>el.dataset.grupo);
+  save();document.querySelector('.modal-overlay').remove();navigate('profesoras');
+};
+
+window.saveProfe=function(id){
   const n=document.getElementById('pNombre').value.trim();
   if(!n)return alert('Ingresa el nombre');
-  if(id){const p=DATA.profesoras.find(x=>x.id===id);p.nombre=n;p.grupo=document.getElementById('pGrupo').value;p.usuario=document.getElementById('pUser').value;p.password=document.getElementById('pPass').value;}
-  else DATA.profesoras.push({id:'p'+Date.now(),nombre:n,grupo:document.getElementById('pGrupo').value,usuario:document.getElementById('pUser').value,password:document.getElementById('pPass').value});
+  if(!DATA.profesoras)DATA.profesoras=[];
+  const grupos=Array.from(document.querySelectorAll('#gruposCheck .grupo-chip.selected')).map(el=>el.dataset.grupo);
+  if(id){
+    const p=DATA.profesoras.find(x=>x.id===id);
+    p.nombre=n;p.usuario=document.getElementById('pUser').value;p.password=document.getElementById('pPass').value;p.grupos=grupos;
+  } else {
+    DATA.profesoras.push({id:'p'+Date.now(),nombre:n,usuario:document.getElementById('pUser').value,password:document.getElementById('pPass').value,grupos});
+  }
   save();document.querySelector('.modal-overlay').remove();navigate('profesoras');
-}
-function deleteProfe(id){if(!confirm('¿Eliminar esta profesora?'))return;DATA.profesoras=DATA.profesoras.filter(p=>p.id!==id);save();navigate('profesoras');}
+};
+
+window.deleteProfe=function(id){
+  if(!confirm('¿Eliminar esta profesora?'))return;
+  DATA.profesoras=(DATA.profesoras||[]).filter(p=>p.id!==id);
+  save();navigate('profesoras');
+};
 
 // ─── PAGOS ────────────────────────────────────────────────────────────────────
 function renderPagos(c){
-  const totalDeudaAlm=DATA.estudiantes.reduce((a,e)=>a+(e.deudaAlmuerzos*e.valorAlmuerzo),0);
-  const totalPendMens=DATA.estudiantes.filter(e=>!e.mensualidadPagada).reduce((a,e)=>a+e.valorMensualidad,0);
+  const totalDeudaAlm=(DATA.estudiantes||[]).reduce((a,e)=>a+(e.deudaAlmuerzos*e.valorAlmuerzo),0);
+  const totalPendMens=(DATA.estudiantes||[]).filter(e=>!e.mensualidadPagada).reduce((a,e)=>a+e.valorMensualidad,0);
   c.innerHTML=`
     <div class="stats-grid">
-      <div class="stat-card red"><div class="num">${DATA.estudiantes.filter(e=>!e.mensualidadPagada).length}</div><div class="lbl">Mensualidades pendientes</div></div>
+      <div class="stat-card red"><div class="num">${(DATA.estudiantes||[]).filter(e=>!e.mensualidadPagada).length}</div><div class="lbl">Mensualidades pendientes</div></div>
       <div class="stat-card red"><div class="num">${fmt(totalPendMens)}</div><div class="lbl">Total mensualidades</div></div>
-      <div class="stat-card yellow"><div class="num">${DATA.estudiantes.filter(e=>e.deudaAlmuerzos>0).length}</div><div class="lbl">Con deuda almuerzos</div></div>
+      <div class="stat-card yellow"><div class="num">${(DATA.estudiantes||[]).filter(e=>e.deudaAlmuerzos>0).length}</div><div class="lbl">Con deuda almuerzos</div></div>
       <div class="stat-card yellow"><div class="num">${fmt(totalDeudaAlm)}</div><div class="lbl">Total deuda almuerzos</div></div>
     </div>
     <div class="tabs">
@@ -567,285 +583,284 @@ function renderPagos(c){
 
 function renderTabMens(){return `<div class="card">
   <div class="card-header"><span class="card-title">💳 Estado Mensualidades</span></div>
-  <table>
-    <tr><th>Estudiante</th><th>Grupo</th><th>Valor</th><th>Estado</th><th>Acciones</th></tr>
-    ${DATA.estudiantes.map(e=>`<tr>
-      <td><b>${e.nombre}</b></td><td><span class="badge badge-pink">${e.grupo}</span></td>
-      <td>${fmt(e.valorMensualidad)}</td>
-      <td><span class="badge ${e.mensualidadPagada?'badge-green':'badge-red'}">${e.mensualidadPagada?'✅ Pagada':'❌ Pendiente'}</span></td>
-      <td><div class="btn-group">
-        ${!e.mensualidadPagada?`<button class="btn btn-green btn-sm" onclick="pagarMens('${e.id}')">💰 Registrar pago</button>`:''}
-        <button class="btn btn-blue btn-sm" onclick="toggleMens('${e.id}')">${e.mensualidadPagada?'↩️ Revertir':'✅ Marcar pagada'}</button>
-      </div></td>
-    </tr>`).join('')}
-  </table>
-</div>`;}
+  <table><tr><th>Estudiante</th><th>Grupo</th><th>Valor</th><th>Estado</th><th>Acciones</th></tr>
+  ${(DATA.estudiantes||[]).map(e=>`<tr>
+    <td><b>${e.nombre}</b></td><td><span class="badge badge-pink">${e.grupo}</span></td>
+    <td>${fmt(e.valorMensualidad)}</td>
+    <td><span class="badge ${e.mensualidadPagada?'badge-green':'badge-red'}">${e.mensualidadPagada?'✅ Pagada':'❌ Pendiente'}</span></td>
+    <td><div class="btn-group">
+      ${!e.mensualidadPagada?`<button class="btn btn-green btn-sm" onclick="pagarMens('${e.id}')">💰 Pagar</button>`:''}
+      <button class="btn btn-blue btn-sm" onclick="toggleMens('${e.id}')">${e.mensualidadPagada?'↩️ Revertir':'✅ Marcar'}</button>
+    </div></td>
+  </tr>`).join('')}
+  </table></div>`;}
 
 function renderTabAlm(){return `<div class="card">
   <div class="card-header"><span class="card-title">🍽️ Saldo y Deuda de Almuerzos</span></div>
-  <table>
-    <tr><th>Estudiante</th><th>Grupo</th><th>V. Almuerzo</th><th>Saldo días</th><th>Deuda días</th><th>Valor deuda</th><th>Acciones</th></tr>
-    ${DATA.estudiantes.filter(e=>e.alimentacion!=='no').map(e=>`<tr>
-      <td><b>${e.nombre}</b></td><td><span class="badge badge-pink">${e.grupo}</span></td>
-      <td>${fmt(e.valorAlmuerzo)}</td>
-      <td>${e.alimentacion==='incluida'?'<span class="badge badge-green">Incluida</span>':`<b style="color:${e.saldoAlmuerzos>3?'var(--green)':e.saldoAlmuerzos>0?'var(--yellow)':'var(--red)'}">${e.saldoAlmuerzos}</b>`}</td>
-      <td>${e.deudaAlmuerzos>0?`<span class="deuda-chip">⚠️ ${e.deudaAlmuerzos}</span>`:'0'}</td>
-      <td>${e.deudaAlmuerzos>0?`<b style="color:var(--red)">${fmt(e.deudaAlmuerzos*e.valorAlmuerzo)}</b>`:'$0'}</td>
-      <td><div class="btn-group">
-        ${e.alimentacion!=='incluida'?`<button class="btn btn-green btn-sm" onclick="recargarAlm('${e.id}')">➕ Recargar</button>`:''}
-        ${e.deudaAlmuerzos>0?`<button class="btn btn-blue btn-sm" onclick="pagarDeuda('${e.id}')">💰 Pagar deuda</button>`:''}
-      </div></td>
-    </tr>`).join('')}
-  </table>
-</div>`;}
+  <table><tr><th>Estudiante</th><th>Grupo</th><th>V/día</th><th>Saldo</th><th>Deuda días</th><th>Valor deuda</th><th>Acciones</th></tr>
+  ${(DATA.estudiantes||[]).filter(e=>e.alimentacion!=='no').map(e=>`<tr>
+    <td><b>${e.nombre}</b></td><td><span class="badge badge-pink">${e.grupo}</span></td>
+    <td>${fmt(e.valorAlmuerzo)}</td>
+    <td>${e.alimentacion==='incluida'?'<span class="badge badge-green">Incluida</span>':`<b style="color:${e.saldoAlmuerzos>3?'var(--green)':e.saldoAlmuerzos>0?'var(--yellow)':'var(--red)'}">${e.saldoAlmuerzos}</b>`}</td>
+    <td>${e.deudaAlmuerzos>0?`<span class="deuda-chip">⚠️ ${e.deudaAlmuerzos}</span>`:'0'}</td>
+    <td>${e.deudaAlmuerzos>0?`<b style="color:var(--red)">${fmt(e.deudaAlmuerzos*e.valorAlmuerzo)}</b>`:'$0'}</td>
+    <td><div class="btn-group">
+      ${e.alimentacion!=='incluida'?`<button class="btn btn-green btn-sm" onclick="recargarAlm('${e.id}')">➕ Recargar</button>`:''}
+      ${e.deudaAlmuerzos>0?`<button class="btn btn-blue btn-sm" onclick="pagarDeuda('${e.id}')">💰 Pagar</button>`:''}
+    </div></td>
+  </tr>`).join('')}
+  </table></div>`;}
 
 function renderTabHist(){
-  const pagos=[...DATA.pagos].reverse().slice(0,50);
+  const pagos=[...(DATA.pagos||[])].reverse().slice(0,50);
   return `<div class="card">
-    <div class="card-header"><span class="card-title">📋 Historial de Pagos</span></div>
-    <table>
-      <tr><th>Fecha</th><th>Estudiante</th><th>Tipo</th><th>Valor</th><th>Detalle</th></tr>
-      ${pagos.length===0?'<tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px">No hay pagos registrados</td></tr>':''}
-      ${pagos.map(p=>`<tr>
-        <td>${p.fecha}</td><td>${p.estudiante}</td>
-        <td><span class="badge ${p.tipo==='mensualidad'?'badge-blue':'badge-green'}">${p.tipo==='mensualidad'?'Mensualidad':'Almuerzos'}</span></td>
-        <td>${fmt(p.valor)}</td><td>${p.detalle}</td>
-      </tr>`).join('')}
-    </table>
-  </div>`;}
+    <div class="card-header"><span class="card-title">📋 Historial</span></div>
+    <table><tr><th>Fecha</th><th>Estudiante</th><th>Tipo</th><th>Valor</th><th>Detalle</th></tr>
+    ${pagos.length===0?'<tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px">Sin pagos registrados</td></tr>':''}
+    ${pagos.map(p=>`<tr><td>${p.fecha}</td><td>${p.estudiante}</td>
+      <td><span class="badge ${p.tipo==='mensualidad'?'badge-blue':'badge-green'}">${p.tipo==='mensualidad'?'Mensualidad':'Almuerzos'}</span></td>
+      <td>${fmt(p.valor)}</td><td>${p.detalle}</td>
+    </tr>`).join('')}
+    </table></div>`;}
 
-function toggleMens(id){const e=DATA.estudiantes.find(x=>x.id===id);e.mensualidadPagada=!e.mensualidadPagada;save();navigate('pagos');}
-function pagarMens(id){
-  const e=DATA.estudiantes.find(x=>x.id===id);
+window.toggleMens=function(id){const e=(DATA.estudiantes||[]).find(x=>x.id===id);e.mensualidadPagada=!e.mensualidadPagada;save();navigate('pagos');};
+window.pagarMens=function(id){
+  const e=(DATA.estudiantes||[]).find(x=>x.id===id);
   e.mensualidadPagada=true;
+  if(!DATA.pagos)DATA.pagos=[];
   DATA.pagos.push({fecha:todayStr(),estudiante:e.nombre,tipo:'mensualidad',valor:e.valorMensualidad,detalle:`Mensualidad ${new Date().toLocaleDateString('es-CO',{month:'long',year:'numeric'})}`});
   save();navigate('pagos');
-}
-function recargarAlm(id){
-  const e=DATA.estudiantes.find(x=>x.id===id);
+};
+window.recargarAlm=function(id){
+  const e=(DATA.estudiantes||[]).find(x=>x.id===id);
   const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()">
   <div class="modal" style="max-width:380px">
     <div class="modal-header"><span class="modal-title">➕ Recargar almuerzos</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
     <p style="font-size:13px;color:#555;margin-bottom:16px">Estudiante: <b>${e.nombre}</b><br>Saldo actual: <b>${e.saldoAlmuerzos} días</b> · Valor/día: <b>${fmt(e.valorAlmuerzo)}</b></p>
-    <div class="form-group" style="margin-bottom:16px">
-      <label>¿Cuántos días recarga?</label>
-      <input id="diasRecarga" type="number" min="1" placeholder="Ej: 1, 5, 20" style="padding:8px 12px;border-radius:8px;border:1.5px solid #e0e0e0;font-size:14px"/>
+    <div class="form-group" style="margin-bottom:16px"><label>¿Cuántos días recarga?</label>
+      <input id="diasRecarga" type="number" min="1" placeholder="Ej: 1, 5, 20"/>
     </div>
-    <div style="background:#E8F5E9;border-radius:8px;padding:10px;font-size:12px;color:#2E7D32;margin-bottom:16px">
-      💡 1 día · 5 días = semana · 20 días = mes
-    </div>
+    <div style="background:#E8F5E9;border-radius:8px;padding:10px;font-size:12px;color:#2E7D32;margin-bottom:16px">💡 1=1 día · 5=semana · 20=mes</div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
-      <button class="btn btn-pink" onclick="confirmarRecarga('${id}')">Confirmar recarga</button>
+      <button class="btn btn-pink" onclick="confirmarRecarga('${id}')">Confirmar</button>
     </div>
   </div></div>`;
   document.body.insertAdjacentHTML('beforeend',html);
-}
-
-function confirmarRecarga(id){
+};
+window.confirmarRecarga=function(id){
   const dias=parseInt(document.getElementById('diasRecarga').value);
-  if(!dias||isNaN(dias)||dias<1)return alert('Ingresa un número válido de días');
-  const e=DATA.estudiantes.find(x=>x.id===id);
+  if(!dias||isNaN(dias)||dias<1)return alert('Ingresa un número válido');
+  const e=(DATA.estudiantes||[]).find(x=>x.id===id);
   e.saldoAlmuerzos+=dias;
+  if(!DATA.pagos)DATA.pagos=[];
   DATA.pagos.push({fecha:todayStr(),estudiante:e.nombre,tipo:'almuerzos',valor:dias*e.valorAlmuerzo,detalle:`Recarga ${dias} almuerzos`});
   save();document.querySelector('.modal-overlay').remove();navigate('pagos');
-}
-
-function pagarDeuda(id){
-  const e=DATA.estudiantes.find(x=>x.id===id);
+};
+window.pagarDeuda=function(id){
+  const e=(DATA.estudiantes||[]).find(x=>x.id===id);
   const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()">
   <div class="modal" style="max-width:380px">
-    <div class="modal-header"><span class="modal-title">💰 Pagar deuda de almuerzos</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="modal-header"><span class="modal-title">💰 Pagar deuda</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
     <p style="font-size:13px;color:#555;margin-bottom:16px">Estudiante: <b>${e.nombre}</b></p>
-    <div style="background:#FFEBEE;border-radius:8px;padding:10px;font-size:13px;color:#C62828;margin-bottom:16px">
-      ⚠️ Deuda total: <b>${e.deudaAlmuerzos} días</b> = <b>${fmt(e.deudaAlmuerzos*e.valorAlmuerzo)}</b>
-    </div>
-    <div class="form-group" style="margin-bottom:16px">
-      <label>¿Cuántos días paga ahora?</label>
-      <input id="diasDeuda" type="number" min="1" max="${e.deudaAlmuerzos}" placeholder="Máx: ${e.deudaAlmuerzos}" style="padding:8px 12px;border-radius:8px;border:1.5px solid #e0e0e0;font-size:14px"/>
+    <div style="background:#FFEBEE;border-radius:8px;padding:10px;font-size:13px;color:#C62828;margin-bottom:16px">⚠️ Deuda: <b>${e.deudaAlmuerzos} días</b> = <b>${fmt(e.deudaAlmuerzos*e.valorAlmuerzo)}</b></div>
+    <div class="form-group" style="margin-bottom:16px"><label>¿Cuántos días paga?</label>
+      <input id="diasDeuda" type="number" min="1" max="${e.deudaAlmuerzos}" placeholder="Máx: ${e.deudaAlmuerzos}"/>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
-      <button class="btn btn-pink" onclick="confirmarPagoDeuda('${id}')">Confirmar pago</button>
+      <button class="btn btn-pink" onclick="confirmarPagoDeuda('${id}')">Confirmar</button>
     </div>
   </div></div>`;
   document.body.insertAdjacentHTML('beforeend',html);
-}
-
-function confirmarPagoDeuda(id){
+};
+window.confirmarPagoDeuda=function(id){
   const dias=parseInt(document.getElementById('diasDeuda').value);
   if(!dias||isNaN(dias)||dias<1)return alert('Ingresa un número válido');
-  const e=DATA.estudiantes.find(x=>x.id===id);
+  const e=(DATA.estudiantes||[]).find(x=>x.id===id);
   const pagar=Math.min(dias,e.deudaAlmuerzos);
   e.deudaAlmuerzos-=pagar;
+  if(!DATA.pagos)DATA.pagos=[];
   DATA.pagos.push({fecha:todayStr(),estudiante:e.nombre,tipo:'almuerzos',valor:pagar*e.valorAlmuerzo,detalle:`Pago deuda ${pagar} almuerzos`});
   save();document.querySelector('.modal-overlay').remove();navigate('pagos');
-}
+};
 
 // ─── REPORTES ─────────────────────────────────────────────────────────────────
 function renderReportes(c){
   const isProfe=currentUser.role==='profe';
   c.innerHTML=`<div class="card" style="padding:24px">
     <div class="card-header" style="margin:-24px -24px 20px -24px;padding:14px 24px"><span class="card-title">📄 Generar Reportes PDF</span></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">
+    ${isProfe?`<div class="lock-banner">📋 Solo verás datos de tus grupos: <b>${getMisGrupos().join(', ')}</b></div>`:''}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">
       <div style="background:var(--pink3);border-radius:14px;padding:20px;border:1px solid #f8bbd0">
         <div style="font-size:28px;margin-bottom:8px">📊</div>
         <div style="font-weight:700;font-size:15px;color:var(--blue);margin-bottom:4px">Reporte Diario</div>
         <div style="font-size:12px;color:#888;margin-bottom:14px">Asistencia y almuerzos de hoy</div>
-        <button class="btn btn-pink" onclick="generarPDF('diario')">Generar PDF</button>
+        <button class="btn btn-pink" onclick="generarReporte('diario')">Generar</button>
       </div>
       <div style="background:#E3F2FD;border-radius:14px;padding:20px;border:1px solid #bbdefb">
         <div style="font-size:28px;margin-bottom:8px">📅</div>
         <div style="font-weight:700;font-size:15px;color:var(--blue);margin-bottom:4px">Reporte Semanal</div>
         <div style="font-size:12px;color:#888;margin-bottom:14px">Resumen de la semana</div>
-        <button class="btn btn-pink" onclick="generarPDF('semanal')">Generar PDF</button>
+        <button class="btn btn-pink" onclick="generarReporte('semanal')">Generar</button>
       </div>
       <div style="background:#E8F5E9;border-radius:14px;padding:20px;border:1px solid #c8e6c9">
         <div style="font-size:28px;margin-bottom:8px">🗓️</div>
         <div style="font-weight:700;font-size:15px;color:var(--blue);margin-bottom:4px">Reporte Mensual</div>
-        <div style="font-size:12px;color:#888;margin-bottom:14px">Resumen completo del mes</div>
-        <button class="btn btn-pink" onclick="generarPDF('mensual')">Generar PDF</button>
+        <div style="font-size:12px;color:#888;margin-bottom:14px">Resumen del mes</div>
+        <button class="btn btn-pink" onclick="generarReporte('mensual')">Generar</button>
       </div>
       ${!isProfe?`
       <div style="background:#FFF3E0;border-radius:14px;padding:20px;border:1px solid #ffe0b2">
         <div style="font-size:28px;margin-bottom:8px">💰</div>
         <div style="font-weight:700;font-size:15px;color:var(--blue);margin-bottom:4px">Reporte Financiero</div>
-        <div style="font-size:12px;color:#888;margin-bottom:14px">Pagos, deudas y mensualidades</div>
-        <button class="btn btn-pink" onclick="generarPDF('financiero')">Generar PDF</button>
+        <div style="font-size:12px;color:#888;margin-bottom:14px">Pagos y deudas</div>
+        <button class="btn btn-pink" onclick="generarReporte('financiero')">Generar</button>
       </div>
       <div style="background:#FFEBEE;border-radius:14px;padding:20px;border:1px solid #ffcdd2">
         <div style="font-size:28px;margin-bottom:8px">⚠️</div>
         <div style="font-weight:700;font-size:15px;color:var(--blue);margin-bottom:4px">Reporte de Deudas</div>
-        <div style="font-size:12px;color:#888;margin-bottom:14px">Lista completa de deudas</div>
-        <button class="btn btn-pink" onclick="generarPDF('deudas')">Generar PDF</button>
+        <div style="font-size:12px;color:#888;margin-bottom:14px">Lista de deudas pendientes</div>
+        <button class="btn btn-pink" onclick="generarReporte('deudas')">Generar</button>
       </div>`:''}
     </div>
   </div>`;
 }
 
-function generarPDF(tipo){
+window.generarReporte=function(tipo){
   const fecha=new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   const titles={diario:'REPORTE DIARIO DE ASISTENCIA',semanal:'REPORTE SEMANAL',mensual:'REPORTE MENSUAL',financiero:'REPORTE FINANCIERO',deudas:'REPORTE DE DEUDAS'};
-  let tablaHTML='';
-  let resumenHTML='';
+  const ests=getMisEstudiantes();
+  let resumenHTML='', tablaHTML='';
 
   if(tipo==='diario'){
     const hoy=getRegistrosHoy();
-    tablaHTML=`
-      <p style="margin-bottom:10px"><b>Total estudiantes:</b> ${DATA.estudiantes.length} &nbsp;|&nbsp; <b>Asistieron:</b> ${hoy.filter(r=>r.asistio).length} &nbsp;|&nbsp; <b>Almorzaron:</b> ${hoy.filter(r=>r.almorzó).length}</p>
-      <table><thead><tr><th>Estudiante</th><th>Grupo</th><th>Modalidad</th><th>Asistió</th><th>Almorzó</th></tr></thead><tbody>
-      ${DATA.estudiantes.map(e=>{const r=getRegistroEst(e.id)||{};return`<tr><td>${e.nombre}</td><td>${e.grupo}</td><td>${e.modalidad==='TC'?'T. Completo':'M. Tiempo'}</td><td>${r.asistio?'✓ Sí':'✗ No'}</td><td>${e.alimentacion==='no'?'N/A':r.almorzó?'✓ Sí':'✗ No'}</td></tr>`;}).join('')}
-      </tbody></table>`;
+    const asist=hoy.filter(r=>r.asistio&&ests.find(e=>e.id===r.estId)).length;
+    const alm=hoy.filter(r=>r.almorzó&&ests.find(e=>e.id===r.estId)).length;
+    resumenHTML=`<div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="background:#FCE4EC;border-radius:10px;padding:10px 18px;text-align:center"><div style="font-size:22px;font-weight:700;color:#E91E8C">${ests.length}</div><div style="font-size:11px;color:#888">Total</div></div>
+      <div style="background:#E3F2FD;border-radius:10px;padding:10px 18px;text-align:center"><div style="font-size:22px;font-weight:700;color:#1A237E">${asist}</div><div style="font-size:11px;color:#888">Asistieron</div></div>
+      <div style="background:#E8F5E9;border-radius:10px;padding:10px 18px;text-align:center"><div style="font-size:22px;font-weight:700;color:#2E7D32">${alm}</div><div style="font-size:11px;color:#888">Almorzaron</div></div>
+    </div>`;
+    tablaHTML=`<table><thead><tr><th>Estudiante</th><th>Grupo</th><th>Modalidad</th><th>Asistió</th><th>Almorzó</th></tr></thead><tbody>
+    ${ests.map(e=>{const r=getRegistroEst(e.id)||{};return`<tr><td>${e.nombre}</td><td>${e.grupo}</td><td>${e.modalidad==='TC'?'T. Completo':'M. Tiempo'}</td><td style="color:${r.asistio?'#2E7D32':'#C62828'}">${r.asistio?'✓ Sí':'✗ No'}</td><td style="color:${r.almorzó?'#2E7D32':'#C62828'}">${e.alimentacion==='no'?'—':r.almorzó?'✓ Sí':'✗ No'}</td></tr>`;}).join('')}
+    </tbody></table>`;
   }
   if(tipo==='financiero'){
     tablaHTML=`<table><thead><tr><th>Estudiante</th><th>Grupo</th><th>Mensualidad</th><th>Estado</th><th>Saldo Alm.</th><th>Deuda días</th><th>Valor deuda</th></tr></thead><tbody>
-    ${DATA.estudiantes.map(e=>`<tr><td>${e.nombre}</td><td>${e.grupo}</td><td>${fmt(e.valorMensualidad)}</td><td>${e.mensualidadPagada?'✅ Pagada':'❌ Pendiente'}</td><td>${e.alimentacion==='no'?'N/A':`${e.saldoAlmuerzos} días`}</td><td>${e.deudaAlmuerzos}</td><td>${fmt(e.deudaAlmuerzos*e.valorAlmuerzo)}</td></tr>`).join('')}
+    ${(DATA.estudiantes||[]).map(e=>`<tr><td>${e.nombre}</td><td>${e.grupo}</td><td>${fmt(e.valorMensualidad)}</td><td style="color:${e.mensualidadPagada?'#2E7D32':'#C62828'}">${e.mensualidadPagada?'✅':'❌'}</td><td>${e.alimentacion==='no'?'—':`${e.saldoAlmuerzos}`}</td><td>${e.deudaAlmuerzos}</td><td style="color:${e.deudaAlmuerzos>0?'#C62828':'#2E7D32'}">${fmt(e.deudaAlmuerzos*e.valorAlmuerzo)}</td></tr>`).join('')}
     </tbody></table>`;
   }
   if(tipo==='deudas'){
-    const deudores=DATA.estudiantes.filter(e=>e.deudaAlmuerzos>0||!e.mensualidadPagada);
-    tablaHTML=`<p style="margin-bottom:10px"><b>Total con deudas:</b> ${deudores.length} estudiantes</p>
-    <table><thead><tr><th>Estudiante</th><th>Grupo</th><th>Deuda Mensualidad</th><th>Deuda Almuerzos</th><th>Total Deuda</th></tr></thead><tbody>
-    ${deudores.map(e=>`<tr><td>${e.nombre}</td><td>${e.grupo}</td><td>${e.mensualidadPagada?'$0':fmt(e.valorMensualidad)}</td><td>${e.deudaAlmuerzos} días (${fmt(e.deudaAlmuerzos*e.valorAlmuerzo)})</td><td><b>${fmt((!e.mensualidadPagada?e.valorMensualidad:0)+(e.deudaAlmuerzos*e.valorAlmuerzo))}</b></td></tr>`).join('')}
+    const deudores=(DATA.estudiantes||[]).filter(e=>e.deudaAlmuerzos>0||!e.mensualidadPagada);
+    tablaHTML=`<table><thead><tr><th>Estudiante</th><th>Grupo</th><th>Deuda Mensualidad</th><th>Deuda Almuerzos</th><th>Total</th></tr></thead><tbody>
+    ${deudores.map(e=>`<tr><td>${e.nombre}</td><td>${e.grupo}</td><td>${e.mensualidadPagada?'$0':fmt(e.valorMensualidad)}</td><td>${e.deudaAlmuerzos} días (${fmt(e.deudaAlmuerzos*e.valorAlmuerzo)})</td><td><b style="color:#C62828">${fmt((!e.mensualidadPagada?e.valorMensualidad:0)+(e.deudaAlmuerzos*e.valorAlmuerzo))}</b></td></tr>`).join('')}
     </tbody></table>`;
   }
   if(tipo==='semanal'||tipo==='mensual'){
     const grupos={};
-    DATA.estudiantes.forEach(e=>{if(!grupos[e.grupo])grupos[e.grupo]={total:0,asistencias:0,almuerzos:0};grupos[e.grupo].total++;});
-    DATA.registros.forEach(r=>{const e=DATA.estudiantes.find(x=>x.id===r.estId);if(!e||!grupos[e.grupo])return;if(r.asistio)grupos[e.grupo].asistencias++;if(r.almorzó)grupos[e.grupo].almuerzos++;});
-    tablaHTML=`<table><thead><tr><th>Grupo</th><th>Estudiantes</th><th>Total Asistencias</th><th>Total Almuerzos</th><th>% Promedio</th></tr></thead><tbody>
+    ests.forEach(e=>{if(!grupos[e.grupo])grupos[e.grupo]={total:0,asistencias:0,almuerzos:0};grupos[e.grupo].total++;});
+    (DATA.registros||[]).forEach(r=>{const e=ests.find(x=>x.id===r.estId);if(!e||!grupos[e.grupo])return;if(r.asistio)grupos[e.grupo].asistencias++;if(r.almorzó)grupos[e.grupo].almuerzos++;});
+    tablaHTML=`<table><thead><tr><th>Grupo</th><th>Estudiantes</th><th>Asistencias</th><th>Almuerzos</th><th>%</th></tr></thead><tbody>
     ${Object.entries(grupos).map(([g,d])=>`<tr><td>${g}</td><td>${d.total}</td><td>${d.asistencias}</td><td>${d.almuerzos}</td><td>${d.total?Math.round(d.asistencias/d.total*100):0}%</td></tr>`).join('')}
     </tbody></table>`;
   }
 
-  const win=window.open('','_blank');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"/>
-  <title>${titles[tipo]} — FMH</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif}
-    body{padding:30px;color:#333;font-size:13px}
-    .header{background:#E91E8C;color:#fff;padding:20px;border-radius:10px;text-align:center;margin-bottom:20px}
-    .header h1{font-size:18px;margin-bottom:4px}
-    .header p{font-size:11px;opacity:0.9}
-    .titulo{font-size:16px;font-weight:700;color:#1A237E;text-align:center;margin-bottom:4px}
-    .subtitulo{font-size:11px;color:#888;text-align:center;margin-bottom:20px}
-    table{width:100%;border-collapse:collapse;margin-top:10px}
-    th{background:#E91E8C;color:#fff;padding:8px 12px;text-align:left;font-size:12px}
-    td{padding:8px 12px;border-bottom:1px solid #eee;font-size:12px}
-    tr:nth-child(even) td{background:#FCE4EC}
-    .footer{margin-top:30px;text-align:center;font-size:10px;color:#aaa;border-top:1px solid #eee;padding-top:10px}
-    .btn-print{display:block;margin:0 auto 20px;padding:10px 30px;background:#E91E8C;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer}
-    @media print{.btn-print{display:none}}
-  </style></head><body>
-  <button class="btn-print" onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>
-  <div class="header">
-    <h1>FUNDACIÓN MIS HABILIDADES</h1>
-    <p>Fundación de Rehabilitación Integral, Formación y Educación — Ibagué, Tolima, Colombia</p>
-  </div>
-  <div class="titulo">${titles[tipo]}</div>
-  <div class="subtitulo">Fecha: ${fecha} &nbsp;|&nbsp; Generado por: ${currentUser.nombre}</div>
-  ${tablaHTML}
-  <div class="footer">Fundación Mis Habilidades — Ibagué, Tolima | Documento generado el ${new Date().toLocaleString('es-CO')}</div>
-  </body></html>`);
-  win.document.close();
-}
+  const html=`<div class="modal-overlay" id="reporteModal">
+  <div class="modal" style="max-width:800px;width:100%">
+    <div class="modal-header">
+      <span class="modal-title">📄 ${titles[tipo]}</span>
+      <button class="modal-close" onclick="document.getElementById('reporteModal').remove()">✕</button>
+    </div>
+    <div id="reporteContenido">
+      <div style="background:#E91E8C;color:#fff;padding:16px;border-radius:10px;text-align:center;margin-bottom:16px">
+        <div style="font-size:16px;font-weight:700">FUNDACIÓN MIS HABILIDADES</div>
+        <div style="font-size:11px;opacity:0.9">Fundación de Rehabilitación Integral, Formación y Educación — Ibagué, Tolima</div>
+      </div>
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:15px;font-weight:700;color:#1A237E">${titles[tipo]}</div>
+        <div style="font-size:11px;color:#888">Fecha: ${fecha} | Por: ${currentUser.nombre}</div>
+      </div>
+      ${resumenHTML}
+      <div style="overflow-x:auto">${tablaHTML}</div>
+      <div style="margin-top:20px;text-align:center;font-size:10px;color:#aaa;border-top:1px solid #eee;padding-top:10px">
+        Fundación Mis Habilidades — Ibagué, Tolima | ${new Date().toLocaleString('es-CO')}
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="document.getElementById('reporteModal').remove()">Cerrar</button>
+      <button class="btn btn-pink" onclick="imprimirReporte()">🖨️ Imprimir / PDF</button>
+    </div>
+  </div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+};
 
-// ─── CONFIGURACIÓN (solo admin) ───────────────────────────────────────────────
+window.imprimirReporte=function(){
+  const contenido=document.getElementById('reporteContenido').innerHTML;
+  const estilo=`<style>*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif;font-size:12px}body{padding:20px}table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#E91E8C;color:#fff;padding:7px 10px;text-align:left}td{padding:7px 10px;border-bottom:1px solid #eee}tr:nth-child(even) td{background:#FCE4EC}</style>`;
+  const w=window.open('','_blank','width=900,height=700');
+  if(w){w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Reporte FMH</title>${estilo}</head><body>${contenido}</body></html>`);w.document.close();setTimeout(()=>w.print(),500);}
+  else window.print();
+};
+
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
 function renderConfig(c){
   c.innerHTML=`
-    <div class="lock-banner">🔒 Esta sección es exclusiva del <b>Presidente</b>. Los cambios aquí afectan todo el sistema.</div>
+    <div class="lock-banner">🔒 Sección exclusiva del <b>Presidente</b>.</div>
     <div class="card" style="padding:24px">
-      <div class="card-header" style="margin:-24px -24px 20px -24px;padding:14px 24px"><span class="card-title">⚙️ Configuración del Sistema</span></div>
+      <div class="card-header" style="margin:-24px -24px 20px -24px;padding:14px 24px"><span class="card-title">⚙️ Configuración</span></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">
-
         <div style="background:#E8F5E9;border-radius:14px;padding:20px;border:1px solid #c8e6c9">
           <div style="font-size:24px;margin-bottom:8px">🔑</div>
-          <div style="font-weight:700;font-size:14px;color:var(--blue);margin-bottom:4px">Cambiar contraseña Coordinadora</div>
+          <div style="font-weight:700;font-size:14px;color:var(--blue);margin-bottom:4px">Contraseña Coordinadora</div>
           <div style="font-size:12px;color:#888;margin-bottom:12px">Usuario: coordinadora</div>
           <input id="newCoordPass" type="password" placeholder="Nueva contraseña" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e0e0e0;font-size:13px;margin-bottom:8px"/>
           <button class="btn btn-green" onclick="cambiarPassCoord()">Actualizar</button>
         </div>
-
         <div style="background:var(--pink3);border-radius:14px;padding:20px;border:1px solid #f8bbd0">
           <div style="font-size:24px;margin-bottom:8px">🏫</div>
           <div style="font-weight:700;font-size:14px;color:var(--blue);margin-bottom:4px">Gestión de Grupos</div>
-          <div style="font-size:12px;color:#888;margin-bottom:12px">Grupos actuales: ${DATA.grupos.length}</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4;margin-bottom:10px">${DATA.grupos.map(g=>`<span class="badge badge-pink" style="margin:2px">${g}</span>`).join('')}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">
+            ${(DATA.grupos||[]).map(g=>`<span class="badge badge-pink" style="margin:2px">${g} <span onclick="eliminarGrupo('${g}')" style="cursor:pointer;margin-left:4px">✕</span></span>`).join('')}
+          </div>
           <button class="btn btn-pink" onclick="agregarGrupo()">+ Agregar grupo</button>
         </div>
-
         <div style="background:#FFEBEE;border-radius:14px;padding:20px;border:1px solid #ffcdd2">
           <div style="font-size:24px;margin-bottom:8px">🔄</div>
           <div style="font-weight:700;font-size:14px;color:var(--blue);margin-bottom:4px">Reiniciar mensualidades</div>
-          <div style="font-size:12px;color:#888;margin-bottom:12px">Marca todas las mensualidades como pendientes para el nuevo mes</div>
+          <div style="font-size:12px;color:#888;margin-bottom:12px">Marca todas como pendientes para el nuevo mes</div>
           <button class="btn btn-red" onclick="reiniciarMensualidades()">Reiniciar mes</button>
         </div>
-
       </div>
     </div>`;
 }
 
-function cambiarPassCoord(){
+window.cambiarPassCoord=function(){
   const np=document.getElementById('newCoordPass').value.trim();
-  if(!np||np.length<6)return alert('La contraseña debe tener al menos 6 caracteres');
+  if(!np||np.length<6)return alert('Mínimo 6 caracteres');
   COORD_CRED.pass=np;
-  alert('✅ Contraseña de coordinadora actualizada correctamente');
+  alert('✅ Contraseña actualizada');
   document.getElementById('newCoordPass').value='';
-}
-
-function agregarGrupo(){
+};
+window.agregarGrupo=function(){
   const g=prompt('Nombre del nuevo grupo:');
   if(!g||!g.trim())return;
+  if(!DATA.grupos)DATA.grupos=[];
   if(DATA.grupos.includes(g.trim().toUpperCase()))return alert('Ese grupo ya existe');
   DATA.grupos.push(g.trim().toUpperCase());
   save();navigate('config');
-}
+};
+window.eliminarGrupo=function(g){
+  if(!confirm(`¿Eliminar el grupo "${g}"?`))return;
+  DATA.grupos=(DATA.grupos||[]).filter(x=>x!==g);
+  save();navigate('config');
+};
+window.reiniciarMensualidades=function(){
+  if(!confirm('¿Marcar TODAS las mensualidades como pendientes?'))return;
+  (DATA.estudiantes||[]).forEach(e=>e.mensualidadPagada=false);
+  save();alert('✅ Mensualidades reiniciadas');navigate('config');
+};
 
-function reiniciarMensualidades(){
-  if(!confirm('¿Marcar TODAS las mensualidades como pendientes para el nuevo mes?'))return;
-  DATA.estudiantes.forEach(e=>e.mensualidadPagada=false);
-  save();alert('✅ Mensualidades reiniciadas para el nuevo mes');navigate('config');
-}
 </script>
 </body>
 </html>
