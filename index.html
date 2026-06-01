@@ -114,6 +114,8 @@ tr:hover td{background:#fafafa}
   </div>
 </div>
 
+<button class="hamburger" onclick="toggleMenu()" id="hamburger">☰</button>
+<div class="sidebar-overlay" id="sideOverlay" onclick="closeMenu()"></div>
 <div id="app" class="hidden">
   <div class="sidebar">
     <div class="sidebar-logo">
@@ -206,7 +208,22 @@ const can = {
 };
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
-function doLogin(){
+function toggleMenu(){
+  const s=document.querySelector('.sidebar');
+  const o=document.getElementById('sideOverlay');
+  s.classList.toggle('open');
+  o.classList.toggle('open');
+}
+function closeMenu(){
+  document.querySelector('.sidebar').classList.remove('open');
+  document.getElementById('sideOverlay').classList.remove('open');
+}
+// Cerrar menú al navegar en móvil
+const _origNavigate = window.navigate;
+window.navigate = function(page){
+  closeMenu();
+  navigate(page);
+};
   const u=document.getElementById('loginUser').value.trim();
   const p=document.getElementById('loginPass').value.trim();
   const found=getUsers().find(x=>x.id===u&&x.pass===p);
