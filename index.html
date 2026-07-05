@@ -236,6 +236,7 @@ const fmt = v => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',
 // Texto del balance con signo: + a favor, - debe, 0 al día
 function balanceTexto(e){
   if(e.alimentacion==='incluida') return 'Incluida';
+  if(e.alimentacion==='mensual') return 'Mensual';
   if(e.alimentacion==='no') return '—';
   const b = e.almuerzosBalance||0;
   if(b>0) return 'Saldo: '+b+' días';
@@ -261,6 +262,12 @@ function estadoCargo(c){
 function debeHoy(estId,anio=ANIO){
   return cargosDe(estId,anio)
     .filter(c=>c.tipo==='mensualidad' && c.periodo<=MES_ACTUAL)
+    .reduce((a,c)=>a+Math.max(0,(c.valor||0)-(c.abonado||0)),0);
+}
+// Lo que debe HOY de un tipo de cargo mensual (p.ej. 'alimentacion'): meses vencidos no cubiertos
+function debeTipoHoy(estId,tipo,anio=ANIO){
+  return cargosDe(estId,anio)
+    .filter(c=>c.tipo===tipo && c.periodo<=MES_ACTUAL)
     .reduce((a,c)=>a+Math.max(0,(c.valor||0)-(c.abonado||0)),0);
 }
 
@@ -463,7 +470,7 @@ function pintarEstudiantes(){
   if(!lista.length){tbody.innerHTML=`<tr><td colspan="7" class="empty">No hay estudiantes que coincidan.</td></tr>`;return;}
   const puedeEditar=can.editarEstudiante();
   const puedeCrear=can.crearEstudiante();
-  const alimTxt={incluida:'<span class="badge badge-green">Incluida</span>',dia:'<span class="badge badge-yellow">Por día</span>',no:'<span class="badge badge-blue">No incluida</span>'};
+  const alimTxt={incluida:'<span class="badge badge-green">Incluida</span>',mensual:'<span class="badge badge-pink">Mensual</span>',dia:'<span class="badge badge-yellow">Por día</span>',no:'<span class="badge badge-blue">No incluida</span>'};
   tbody.innerHTML=lista.map(e=>{
     const b=e.almuerzosBalance||0;
     const color=e.alimentacion==='incluida'?'var(--green)':b>0?'var(--green)':b<0?'var(--red)':'#888';
@@ -494,9 +501,10 @@ window.openModalEst=function(id){
       <div class="form-group form-full"><label>Nombre completo</label><input id="mNombre" value="${e.nombre||''}"/></div>
       <div class="form-group"><label>Grupo</label><select id="mGrupo">${(DATA.grupos||[]).map(g=>`${opt(g,e.grupo===g)}${g}</option>`).join('')}</select></div>
       <div class="form-group"><label>Modalidad</label><select id="mMod">${opt('TC',e.modalidad==='TC')}Tiempo Completo</option>${opt('MT',e.modalidad==='MT')}Medio Tiempo</option></select></div>
-      <div class="form-group"><label>Alimentación</label><select id="mAlim">${opt('incluida',e.alimentacion==='incluida')}Incluida en mensualidad</option>${opt('dia',e.alimentacion==='dia')}Paga por día</option>${opt('no',e.alimentacion==='no')}No incluida</option></select></div>
+      <div class="form-group"><label>Alimentación</label><select id="mAlim">${opt('incluida',e.alimentacion==='incluida')}Incluida en mensualidad</option>${opt('mensual',e.alimentacion==='mensual')}Mensual (valor aparte)</option>${opt('dia',e.alimentacion==='dia')}Paga por día</option>${opt('no',e.alimentacion==='no')}No incluida</option></select></div>
       <div class="form-group"><label>Valor mensualidad ($)</label><input id="mValM" type="number" value="${e.valorMensualidad||0}"/></div>
-      <div class="form-group"><label>Valor almuerzo/día ($)</label><input id="mValA" type="number" value="${e.valorAlmuerzo||0}"/></div>
+      <div class="form-group"><label>Valor alimentación mensual ($)</label><input id="mValAlimM" type="number" value="${e.valorAlimentacion||0}"/><span class="hint">Solo si eligió "Mensual (valor aparte)".</span></div>
+      <div class="form-group"><label>Valor almuerzo/día ($)</label><input id="mValA" type="number" value="${e.valorAlmuerzo||0}"/><span class="hint">Solo si eligió "Paga por día".</span></div>
       <div class="form-group form-full">
         <label>Balance de almuerzos (días)</label>
         <input id="mBalance" type="number" value="${e.almuerzosBalance||0}"/>
@@ -525,6 +533,7 @@ window.saveEst=async function(id){
     modalidad:document.getElementById('mMod').value,
     alimentacion:document.getElementById('mAlim').value,
     valorMensualidad:parseInt(document.getElementById('mValM').value)||0,
+    valorAlimentacion:parseInt(document.getElementById('mValAlimM').value)||0,
     valorAlmuerzo:parseInt(document.getElementById('mValA').value)||0,
     almuerzosBalance:parseInt(document.getElementById('mBalance').value)||0,
   };
@@ -534,6 +543,7 @@ window.saveEst=async function(id){
       await updateDoc(doc(db,'estudiantes',id),{...datos, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
       const local=DATA.estudiantes.find(x=>x.id===id); Object.assign(local,datos);
     }else{
+      if((datos.valorMensualidad||0)<=0 && !confirm('⚠️ El valor de mensualidad quedó en $0.\nLos meses aparecerán como "sin valor" (no reflejan deuda).\n\n¿Continuar de todas formas?')){ btn.disabled=false; btn.textContent='Guardar'; return; }
       const nuevoId='e'+Date.now();
       const desde=parseInt(document.getElementById('mIngreso').value)||MES_ACTUAL;
       const batch=writeBatch(db);
@@ -547,6 +557,14 @@ window.saveEst=async function(id){
         const valor=(m===1||m===12)?Math.round(completo*0.5):completo;
         batch.set(doc(db,'cargos',cid),{ estId:nuevoId, anio:ANIO, tipo:'mensualidad', periodo:m, etiqueta:`${MESES[m]} ${ANIO}`, valor, abonado:0, activo:true, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
         nuevosCargos.push({id:cid, estId:nuevoId, anio:ANIO, tipo:'mensualidad', periodo:m, etiqueta:`${MESES[m]} ${ANIO}`, valor, abonado:0, activo:true});
+      }
+      // 3) si paga la alimentación como valor mensual aparte, crea también sus cargos de alimentación
+      if(datos.alimentacion==='mensual' && (datos.valorAlimentacion||0)>0){
+        for(let m=desde;m<=12;m++){
+          const aid=`${nuevoId}_${ANIO}_alim_${String(m).padStart(2,'0')}`;
+          batch.set(doc(db,'cargos',aid),{ estId:nuevoId, anio:ANIO, tipo:'alimentacion', periodo:m, etiqueta:`Alimentación ${MESES[m]} ${ANIO}`, valor:datos.valorAlimentacion, abonado:0, activo:true, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
+          nuevosCargos.push({id:aid, estId:nuevoId, anio:ANIO, tipo:'alimentacion', periodo:m, etiqueta:`Alimentación ${MESES[m]} ${ANIO}`, valor:datos.valorAlimentacion, abonado:0, activo:true});
+        }
       }
       await batch.commit();
       DATA.estudiantes.push({id:nuevoId, activo:true, ...datos});
@@ -601,6 +619,29 @@ function pintarPagTab(){
   body.innerHTML=`<div class="card"><div class="card-body construccion"><div class="ico">🚧</div><div style="font-weight:600;color:#555">Lo construimos en el siguiente sub-paso.</div></div></div>`;
 }
 
+// Dibuja los 12 chips de meses para un conjunto de cargos (pensión o alimentación).
+// Si se pasa clickFn, cada mes con cargo queda clickeable (para ajustar su valor).
+function chipsCargos(cargos, clickFn, estId){
+  let out='';
+  for(let m=1;m<=12;m++){
+    const cg=cargos.find(c=>c.periodo===m);
+    let clase='mes-futuro', detalle='';
+    if(cg){
+      if((cg.valor||0)<=0){ clase='mes-futuro'; detalle='sin valor'; }
+      else{
+        const est=estadoCargo(cg);
+        if(m>MES_ACTUAL && est==='pendiente'){ clase='mes-futuro'; }
+        else if(est==='pagado'){ clase='mes-pagado'; }
+        else if(est==='parcial'){ clase='mes-parcial'; detalle='falta '+fmt(cg.valor-cg.abonado); }
+        else { clase='mes-pendiente'; }
+      }
+    }
+    const click=(cg&&clickFn)?` style="cursor:pointer" onclick="${clickFn}('${estId}',${m})"`:'';
+    out+=`<div class="mes-chip ${clase}"${click} title="${cg?fmt(cg.valor):'sin cargo'}">${MES_ABBR[m]}${detalle?`<div class="m">${detalle}</div>`:''}</div>`;
+  }
+  return out;
+}
+
 function renderTabMens(body){
   const ests=activos(DATA.estudiantes).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
   const hayCargos = DATA.cargos.some(c=>c.tipo==='mensualidad' && c.anio===ANIO);
@@ -631,19 +672,7 @@ function renderTabMens(body){
     const cargos=cargosDe(e.id).filter(c=>c.tipo==='mensualidad');
     const tieneCargos=cargos.length>0;
     const debe=debeHoy(e.id);
-    const chips=[];
-    for(let m=1;m<=12;m++){
-      const cg=cargos.find(c=>c.periodo===m);
-      let clase='mes-futuro', detalle='';
-      if(cg){
-        const est=estadoCargo(cg);
-        if(m>MES_ACTUAL && est==='pendiente'){ clase='mes-futuro'; detalle=''; }
-        else if(est==='pagado'){ clase='mes-pagado'; }
-        else if(est==='parcial'){ clase='mes-parcial'; detalle='falta '+fmt(cg.valor-cg.abonado); }
-        else { clase='mes-pendiente'; }
-      }
-      chips.push(`<div class="mes-chip ${clase}" title="${cg?fmt(cg.valor):'sin cargo'}">${MES_ABBR[m]}${detalle?`<div class="m">${detalle}</div>`:''}</div>`);
-    }
+    const chips=chipsCargos(cargos,null,e.id);
     let estadoDer;
     if(!tieneCargos){
       estadoDer=`<span class="badge badge-yellow">Sin cargos ${ANIO}</span>
@@ -652,12 +681,27 @@ function renderTabMens(body){
       estadoDer=`${debe>0?`Debe hoy: <b style="color:var(--red)">${fmt(debe)}</b>`:`<b style="color:var(--green)">Al día ✓</b>`}
         ${can.registrarAbono()?`<button class="btn btn-pink btn-sm" style="margin-left:10px" onclick="openModalAbono('${e.id}')">+ Abono</button>`:''}`;
     }
+    // Segunda fila: alimentación mensual (si el estudiante la maneja como valor aparte)
+    const cargosAlim=cargosDe(e.id).filter(c=>c.tipo==='alimentacion');
+    let alimBlock='';
+    if(cargosAlim.length){
+      const debeA=debeTipoHoy(e.id,'alimentacion');
+      const chipsA=chipsCargos(cargosAlim, can.registrarAbono()?'editarAlimMes':null, e.id);
+      const estadoA=`${debeA>0?`Debe hoy: <b style="color:var(--red)">${fmt(debeA)}</b>`:`<b style="color:var(--green)">Al día ✓</b>`}
+        ${can.registrarAbono()?`<button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="openModalAbono('${e.id}','alimentacion')">+ Abono</button>`:''}`;
+      alimBlock=`<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+        <div class="est-pago-top"><span style="font-size:12px;font-weight:700;color:var(--pink)">🍽️ Alimentación mensual</span><span class="est-pago-debe" style="font-size:13px">${estadoA}</span></div>
+        <div class="mes-row">${chipsA}</div>
+        ${can.registrarAbono()?`<div class="hint" style="margin-top:5px">Toca un mes para ajustar su valor (descuento por inasistencia).</div>`:''}
+      </div>`;
+    }
     return `<div class="est-pago-card">
       <div class="est-pago-top">
         <span class="est-pago-nombre">${e.nombre} <span class="badge badge-pink" style="font-weight:600">${e.grupo}</span></span>
         <span class="est-pago-debe">${estadoDer}</span>
       </div>
-      <div class="mes-row">${chips.join('')}</div>
+      <div class="mes-row">${chips}</div>
+      ${alimBlock}
     </div>`;
   }).join('');
 
@@ -732,10 +776,11 @@ window.generarCargosEstudiante=async function(estId){
 };
 
 // ─── REGISTRAR ABONO (suma atómica) ──────────────────────────────────────────
-window.openModalAbono=function(estId){
+window.openModalAbono=function(estId, tipo){
+  tipo=tipo||'mensualidad';
   const e=DATA.estudiantes.find(x=>x.id===estId);
-  const cargos=cargosDe(estId).filter(c=>c.tipo==='mensualidad').sort((a,b)=>a.periodo-b.periodo);
-  if(!cargos.length) return alert('Este estudiante no tiene cargos generados todavía.');
+  const cargos=cargosDe(estId).filter(c=>c.tipo===tipo).sort((a,b)=>a.periodo-b.periodo);
+  if(!cargos.length) return alert('Este estudiante no tiene cargos de este tipo todavía.');
   // mes por defecto: el primero no pagado
   const primerPend=cargos.find(c=>estadoCargo(c)!=='pagado');
   const opciones=cargos.map(c=>{
@@ -747,7 +792,7 @@ window.openModalAbono=function(estId){
   const hoy=hoyLocal();
   const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()">
   <div class="modal">
-    <div class="modal-header"><span class="modal-title">Registrar abono — ${e.nombre}</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="modal-header"><span class="modal-title">${tipo==='alimentacion'?'Abono de alimentación':'Registrar abono'} — ${e.nombre}</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
     <div class="form-grid">
       <div class="form-group form-full"><label>Mes al que se aplica</label><select id="abMes">${opciones}</select></div>
       <div class="form-group"><label>Monto del abono ($)</label><input id="abMonto" type="number" min="1" placeholder="0"/></div>
@@ -756,13 +801,14 @@ window.openModalAbono=function(estId){
     <div class="hint" style="margin-top:8px">Si el monto supera lo que falta en ese mes, el sistema te avisará y podrás aplicar el excedente al mes siguiente.</div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
-      <button class="btn btn-pink" id="btnSaveAbono" onclick="saveAbono('${estId}')">Registrar</button>
+      <button class="btn btn-pink" id="btnSaveAbono" onclick="saveAbono('${estId}','${tipo}')">Registrar</button>
     </div>
   </div></div>`;
   document.body.insertAdjacentHTML('beforeend',html);
 };
 
-window.saveAbono=async function(estId){
+window.saveAbono=async function(estId, tipo){
+  tipo=tipo||'mensualidad';
   const e=DATA.estudiantes.find(x=>x.id===estId);
   const cargoId=document.getElementById('abMes').value;
   const monto=parseInt(document.getElementById('abMonto').value)||0;
@@ -773,7 +819,7 @@ window.saveAbono=async function(estId){
 
   // Reparto EN CASCADA: desde el mes elegido hacia adelante, mes a mes, hasta agotar el monto.
   // El último mes puede quedar como abono parcial. Lo que sobre tras diciembre, se avisa.
-  const cargos=cargosDe(estId).filter(c=>c.tipo==='mensualidad').sort((a,b)=>a.periodo-b.periodo);
+  const cargos=cargosDe(estId).filter(c=>c.tipo===tipo).sort((a,b)=>a.periodo-b.periodo);
   const desde=cargos.filter(c=>c.periodo>=cargo.periodo);
   const aplicaciones=[]; // {cargo, monto}
   let restante=monto;
@@ -809,10 +855,10 @@ window.saveAbono=async function(estId){
       // 2) registro del abono en el historial
       const abId='ab'+Date.now()+'_'+ap.cargo.periodo;
       batch.set(doc(db,'abonos',abId),{
-        estId, estudiante:e.nombre, cargoId:ap.cargo.id, etiqueta:ap.cargo.etiqueta,
+        estId, estudiante:e.nombre, cargoId:ap.cargo.id, tipo, etiqueta:ap.cargo.etiqueta,
         valor:ap.monto, fecha, registradoPor:currentUser.usuario, creadoEn:serverTimestamp()
       });
-      DATA.abonos.push({id:abId, estId, estudiante:e.nombre, cargoId:ap.cargo.id, etiqueta:ap.cargo.etiqueta, valor:ap.monto, fecha});
+      DATA.abonos.push({id:abId, estId, estudiante:e.nombre, cargoId:ap.cargo.id, tipo, etiqueta:ap.cargo.etiqueta, valor:ap.monto, fecha});
     });
     await batch.commit();
     // actualizar memoria local (refleja la suma sin recargar)
@@ -825,6 +871,24 @@ window.saveAbono=async function(estId){
     btn.disabled=false; btn.textContent='Registrar';
     alert('No se pudo registrar el abono: '+err.message);
   }
+};
+
+// Ajusta el valor de un mes de alimentación (para aplicar el descuento por inasistencia)
+window.editarAlimMes=async function(estId, periodo){
+  if(!can.registrarAbono()) return;
+  const cid=`${estId}_${ANIO}_alim_${String(periodo).padStart(2,'0')}`;
+  const cg=DATA.cargos.find(c=>c.id===cid);
+  if(!cg) return alert('Ese mes no tiene cargo de alimentación.');
+  const nuevo=prompt(`Alimentación de ${MESES[periodo]} — valor del mes.\nBájalo para aplicar el descuento por los días que faltó.\n\nValor actual: ${cg.valor}\nYa abonado: ${cg.abonado||0}`, cg.valor);
+  if(nuevo===null) return;
+  const valor=parseInt(nuevo);
+  if(isNaN(valor)||valor<0) return alert('Ingresa un valor válido (0 o más).');
+  if(valor<(cg.abonado||0)) return alert(`No puede quedar por debajo de lo ya abonado (${fmt(cg.abonado||0)}).`);
+  try{
+    await updateDoc(doc(db,'cargos',cid),{valor, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
+    cg.valor=valor;
+    pintarPagTab();
+  }catch(err){ alert('No se pudo actualizar: '+err.message); }
 };
 
 // ─── HISTORIAL DE ABONOS (agrupado por estudiante) ───────────────────────────
@@ -1229,11 +1293,12 @@ window.descargarDeudas=function(){
   ests.forEach(e=>{
     const mens=debeHoy(e.id);
     const m=matriculaDe(e.id,ANIO); const matr=m?Math.max(0,m.valor-(m.abonado||0)):0;
+    const alimM=debeTipoHoy(e.id,'alimentacion');
     const alm=(e.almuerzosBalance||0)<0?Math.abs(e.almuerzosBalance)*(e.valorAlmuerzo||0):0;
-    const total=mens+matr+alm;
-    if(total>0) filas.push([e.nombre,e.grupo,mens,matr,alm,total]);
+    const total=mens+matr+alimM+alm;
+    if(total>0) filas.push([e.nombre,e.grupo,mens,matr,alimM,alm,total]);
   });
-  descargarCSV(`FMH_deudas_${fechaArchivo()}.csv`,['Estudiante','Grupo','Mensualidad','Matricula','Almuerzos','Total'],filas);
+  descargarCSV(`FMH_deudas_${fechaArchivo()}.csv`,['Estudiante','Grupo','Mensualidad','Matricula','AlimentacionMensual','Almuerzos','Total'],filas);
 };
 
 window.descargarRecaudo=function(){
@@ -1248,6 +1313,9 @@ window.descargarEstado=function(){
   cargosDe(e.id).filter(c=>c.tipo==='mensualidad').sort((a,b)=>a.periodo-b.periodo).forEach(c=>{
     filas.push([MESES[c.periodo], c.valor, c.abonado||0, Math.max(0,c.valor-(c.abonado||0)), estadoCargo(c)]);
   });
+  cargosDe(e.id).filter(c=>c.tipo==='alimentacion').sort((a,b)=>a.periodo-b.periodo).forEach(c=>{
+    filas.push([`Alimentación ${MESES[c.periodo]}`, c.valor, c.abonado||0, Math.max(0,c.valor-(c.abonado||0)), estadoCargo(c)]);
+  });
   const m=matriculaDe(e.id,ANIO);
   if(m) filas.push([`Matrícula ${ANIO}`, m.valor, m.abonado||0, Math.max(0,m.valor-(m.abonado||0)), estadoCargo(m)]);
   descargarCSV(`FMH_estado_${(e.nombre||'').replace(/ /g,'_')}_${fechaArchivo()}.csv`,['Concepto','Valor','Abonado','Falta','Estado'],filas);
@@ -1256,31 +1324,33 @@ window.descargarEstado=function(){
 // 1) DEUDAS
 function renderRepDeudas(b){
   const ests=activos(DATA.estudiantes).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
-  const filas=[]; let tM=0,tMat=0,tA=0;
+  const filas=[]; let tM=0,tMat=0,tA=0,tAli=0;
   ests.forEach(e=>{
     const mens=debeHoy(e.id);
     const m=matriculaDe(e.id,ANIO); const matr=m?Math.max(0,m.valor-(m.abonado||0)):0;
+    const alimM=debeTipoHoy(e.id,'alimentacion');
     const alm=(e.almuerzosBalance||0)<0?Math.abs(e.almuerzosBalance)*(e.valorAlmuerzo||0):0;
-    const total=mens+matr+alm;
-    if(total>0){ filas.push({e,mens,matr,alm,total}); tM+=mens;tMat+=matr;tA+=alm; }
+    const total=mens+matr+alimM+alm;
+    if(total>0){ filas.push({e,mens,matr,alimM,alm,total}); tM+=mens;tMat+=matr;tAli+=alimM;tA+=alm; }
   });
-  const granTotal=tM+tMat+tA;
+  const granTotal=tM+tMat+tAli+tA;
   let html=`<div class="toolbar no-print"><div style="font-weight:700;color:var(--blue)">Reporte de deudas (a hoy)</div><div style="margin-left:auto">${btnImprimir}${btnDescargar('descargarDeudas()')}</div></div>
   <div class="card"><div class="card-body">${repHeader('Reporte de deudas')}`;
   if(!filas.length){
     html+=`<div class="empty">🎉 Ningún estudiante activo tiene deudas pendientes a hoy.</div></div></div>`;
     b.innerHTML=html; return;
   }
-  html+=`<table class="responsive"><thead><tr><th>Estudiante</th><th>Grupo</th><th>Mensualidad</th><th>Matrícula ${ANIO}</th><th>Almuerzos</th><th>Total</th></tr></thead><tbody>
+  html+=`<table class="responsive"><thead><tr><th>Estudiante</th><th>Grupo</th><th>Mensualidad</th><th>Matrícula ${ANIO}</th><th>Alim. mensual</th><th>Almuerzos</th><th>Total</th></tr></thead><tbody>
     ${filas.map(f=>`<tr>
       <td data-label="Estudiante"><b>${f.e.nombre}</b></td>
       <td data-label="Grupo">${f.e.grupo}</td>
       <td data-label="Mensualidad">${f.mens?fmt(f.mens):'—'}</td>
       <td data-label="Matrícula">${f.matr?fmt(f.matr):'—'}</td>
+      <td data-label="Alim. mensual">${f.alimM?fmt(f.alimM):'—'}</td>
       <td data-label="Almuerzos">${f.alm?fmt(f.alm):'—'}</td>
       <td data-label="Total"><b style="color:var(--red)">${fmt(f.total)}</b></td>
     </tr>`).join('')}
-    <tr class="rep-total-row"><td data-label="">TOTALES</td><td></td><td data-label="Mensualidad">${fmt(tM)}</td><td data-label="Matrícula">${fmt(tMat)}</td><td data-label="Almuerzos">${fmt(tA)}</td><td data-label="Total">${fmt(granTotal)}</td></tr>
+    <tr class="rep-total-row"><td data-label="">TOTALES</td><td></td><td data-label="Mensualidad">${fmt(tM)}</td><td data-label="Matrícula">${fmt(tMat)}</td><td data-label="Alim. mensual">${fmt(tAli)}</td><td data-label="Almuerzos">${fmt(tA)}</td><td data-label="Total">${fmt(granTotal)}</td></tr>
     </tbody></table>
     <div style="margin-top:12px;font-size:13px;color:#555">${filas.length} estudiante(s) con deuda · Total por cobrar: <b style="color:var(--red)">${fmt(granTotal)}</b></div>
     </div></div>`;
@@ -1292,8 +1362,8 @@ function renderRepRecaudo(b){
   const ab=DATA.abonos;
   const tipoDe=a=>a.tipo||'mensualidad';
   const sum=t=>ab.filter(a=>tipoDe(a)===t).reduce((s,a)=>s+(a.valor||0),0);
-  const mens=sum('mensualidad'), matr=sum('matricula'), alm=sum('almuerzo');
-  const gran=mens+matr+alm;
+  const mens=sum('mensualidad'), matr=sum('matricula'), alm=sum('almuerzo'), alimM=sum('alimentacion');
+  const gran=mens+matr+alm+alimM;
   // por mes
   const porMes={};
   ab.forEach(a=>{const k=(a.fecha||'').slice(0,7)||'sin fecha';porMes[k]=(porMes[k]||0)+(a.valor||0);});
@@ -1304,7 +1374,8 @@ function renderRepRecaudo(b){
   html+=`<div class="stats-grid">
       <div class="stat-card green"><div class="num" style="font-size:20px">${fmt(mens)}</div><div class="lbl">Mensualidades</div></div>
       <div class="stat-card blue"><div class="num" style="font-size:20px">${fmt(matr)}</div><div class="lbl">Matrícula</div></div>
-      <div class="stat-card yellow"><div class="num" style="font-size:20px">${fmt(alm)}</div><div class="lbl">Almuerzos</div></div>
+      <div class="stat-card yellow"><div class="num" style="font-size:20px">${fmt(alm)}</div><div class="lbl">Almuerzos por día</div></div>
+      <div class="stat-card"><div class="num" style="font-size:20px;color:var(--pink)">${fmt(alimM)}</div><div class="lbl">Alimentación mensual</div></div>
       <div class="stat-card"><div class="num" style="font-size:20px;color:var(--pink)">${fmt(gran)}</div><div class="lbl">Total recaudado</div></div>
     </div>
     <div class="card-title" style="margin:8px 0 10px">Recaudo por mes</div>
@@ -1337,8 +1408,10 @@ function renderRepEstado(b){
   const matrTxt=m?`Matrícula ${ANIO}: ${fmt(m.valor)} · abonado ${fmt(m.abonado||0)} · ${estadoCargo(m)==='pagado'?'pagada':'falta '+fmt(Math.max(0,m.valor-(m.abonado||0)))}`:`Sin matrícula ${ANIO} registrada`;
   // almuerzos
   const bal=e.almuerzosBalance||0;
-  const almTxt=e.alimentacion!=='dia'?(e.alimentacion==='incluida'?'Almuerzo incluido en la mensualidad':'No toma almuerzo'):(bal>0?`Saldo a favor: ${bal} día(s)`:bal<0?`Debe: ${Math.abs(bal)} día(s) (${fmt(Math.abs(bal)*(e.valorAlmuerzo||0))})`:'Al día');
-  const debeTotal=debeHoy(e.id)+(m?Math.max(0,m.valor-(m.abonado||0)):0)+(bal<0?Math.abs(bal)*(e.valorAlmuerzo||0):0);
+  const almTxt=e.alimentacion==='mensual'?'Alimentación mensual (ver detalle abajo)':e.alimentacion!=='dia'?(e.alimentacion==='incluida'?'Almuerzo incluido en la mensualidad':'No toma almuerzo'):(bal>0?`Saldo a favor: ${bal} día(s)`:bal<0?`Debe: ${Math.abs(bal)} día(s) (${fmt(Math.abs(bal)*(e.valorAlmuerzo||0))})`:'Al día');
+  // alimentación mensual (cargos aparte)
+  const mesesAlim=cargosDe(e.id).filter(c=>c.tipo==='alimentacion').sort((a,b)=>a.periodo-b.periodo);
+  const debeTotal=debeHoy(e.id)+debeTipoHoy(e.id,'alimentacion')+(m?Math.max(0,m.valor-(m.abonado||0)):0)+(bal<0?Math.abs(bal)*(e.valorAlmuerzo||0):0);
 
   b.innerHTML=sel+`<div class="toolbar no-print"><div></div><div style="margin-left:auto">${btnImprimir}${btnDescargar('descargarEstado()')}</div></div>
   <div class="card"><div class="card-body">${repHeader('Estado de cuenta')}
@@ -1349,6 +1422,10 @@ function renderRepEstado(b){
     ${meses.length?`<table class="responsive"><thead><tr><th>Mes</th><th>Valor</th><th>Abonado</th><th>Falta</th><th>Estado</th></tr></thead><tbody>${filasMes}
       <tr class="rep-total-row"><td data-label="">TOTALES</td><td data-label="Valor">${fmt(totMesVal)}</td><td data-label="Abonado">${fmt(totMesAb)}</td><td data-label="Falta">${fmt(Math.max(0,totMesVal-totMesAb))}</td><td></td></tr>
       </tbody></table>`:'<div class="empty">No se han generado cargos mensuales.</div>'}
+    ${mesesAlim.length?`<div class="card-title" style="margin:16px 0 8px">Alimentación mensual ${ANIO}</div>
+    <table class="responsive"><thead><tr><th>Mes</th><th>Valor</th><th>Abonado</th><th>Falta</th><th>Estado</th></tr></thead><tbody>
+    ${mesesAlim.map(c=>{const falta=Math.max(0,c.valor-(c.abonado||0));const est=estadoCargo(c);const badge=est==='pagado'?'<span class="badge badge-green">Pagado</span>':est==='parcial'?'<span class="badge badge-yellow">Parcial</span>':'<span class="badge badge-red">Pendiente</span>';return `<tr><td data-label="Mes">${MESES[c.periodo]}</td><td data-label="Valor">${fmt(c.valor)}</td><td data-label="Abonado">${fmt(c.abonado||0)}</td><td data-label="Falta">${falta?fmt(falta):'—'}</td><td data-label="Estado">${badge}</td></tr>`;}).join('')}
+    </tbody></table>`:''}
     <div class="alert ${debeTotal>0?'alert-red':'alert-yellow'}" style="margin-top:16px">
       ${debeTotal>0?`Saldo pendiente total a hoy: <b>${fmt(debeTotal)}</b>`:`✅ El estudiante está al día con lo vencido a hoy.`}
     </div>

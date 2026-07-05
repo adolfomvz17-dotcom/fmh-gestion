@@ -395,6 +395,7 @@ function renderRegistro(){
     let almLabel, almTag='';
     if(e.alimentacion==='incluida'){ almTag='<span class="badge badge-green">Incluido</span>'; }
     else if(e.alimentacion==='dia'){ almTag=bal>0?`<span class="badge badge-blue">Saldo ${bal}</span>`:bal<0?`<span class="badge badge-red">Debe ${Math.abs(bal)}</span>`:`<span class="badge badge-yellow">Sin saldo</span>`; }
+    else if(e.alimentacion==='mensual'){ almTag='<span class="badge badge-green">Mensual</span>'; }
     else { almTag='<span class="badge badge-yellow">No almuerza</span>'; }
     const dis = soloLectura?'disabled':'';
     return `<div class="est-row">
