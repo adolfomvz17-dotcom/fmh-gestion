@@ -1542,12 +1542,12 @@ function renderProfesoras(c){
     <div class="card">
       <div class="card-header"><span class="card-title">👩‍🏫 Profesoras (${profes.length})</span></div>
       <table class="responsive">
-        <thead><tr><th>Nombre</th><th>Usuario</th><th>Grupos</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Correo</th><th>Grupos</th><th>Acciones</th></tr></thead>
         <tbody>${profes.length?profes.map(p=>{
           const grupos=(p.grupos||[]).map(g=>`<span class="badge badge-pink" style="margin:2px">${g}</span>`).join('')||'<span style="color:#aaa">Sin grupos</span>';
           return `<tr>
             <td data-label="Nombre"><b>${p.nombre}</b></td>
-            <td data-label="Usuario">${p.usuario}</td>
+            <td data-label="Correo">${p.email||p.usuario||''}</td>
             <td data-label="Grupos">${grupos}</td>
             <td data-label="Acciones" class="acciones"><div class="btn-group">
               <button class="btn btn-blue btn-sm" onclick="openModalProfe('${p.id}')">${esAdmin?'✏️ Editar':'🏷️ Grupos'}</button>
@@ -1571,11 +1571,10 @@ window.openModalProfe=function(id){
     <div class="modal-header"><span class="modal-title">${titulo}</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
     <div class="form-grid">
       <div class="form-group form-full"><label>Nombre completo</label><input id="pfNombre" value="${p.nombre||''}" ${dis}/></div>
-      <div class="form-group"><label>Usuario</label><input id="pfUsuario" value="${p.usuario||''}" ${dis}/></div>
-      <div class="form-group"><label>Contraseña</label><input id="pfPass" value="${p.password||''}" ${dis}/></div>
+      <div class="form-group form-full"><label>Correo (para iniciar sesión)</label><input id="pfCorreo" type="email" value="${p.email||p.usuario||''}" ${dis}/></div>
     </div>
     <div class="form-group form-full" style="margin-top:12px"><label>Grupos asignados</label><div id="pfGrupos">${chips}</div><span class="hint">Toca los grupos para asignar o quitar.</span></div>
-    ${esAdmin?`<div class="hint" style="margin-top:8px">La contraseña se guarda en texto plano por ahora; se asegura en la Fase 1.</div>`:''}
+    ${esAdmin?`<div class="hint" style="margin-top:8px">📌 La contraseña se crea aparte en Firebase → Authentication, con este mismo correo. Aquí registras el correo y los grupos.</div>`:''}
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
       <button class="btn btn-pink" id="btnSaveProfe" onclick="saveProfe('${id||''}')">Guardar</button>
@@ -1591,11 +1590,10 @@ window.saveProfe=async function(id){
   try{
     if(esAdmin){
       const nombre=document.getElementById('pfNombre').value.trim();
-      const usuario=document.getElementById('pfUsuario').value.trim();
-      const password=document.getElementById('pfPass').value.trim();
-      if(!nombre||!usuario||!password){ btn.disabled=false; btn.textContent='Guardar'; return alert('Completa nombre, usuario y contraseña.'); }
-      if(DATA.profesoras.some(x=>x.id!==id && x.activo!==false && (x.usuario||'').toLowerCase()===usuario.toLowerCase())){ btn.disabled=false; btn.textContent='Guardar'; return alert('Ese usuario ya está en uso por otra profesora.'); }
-      const datos={nombre,usuario,password,grupos};
+      const email=document.getElementById('pfCorreo').value.trim().toLowerCase();
+      if(!nombre||!email){ btn.disabled=false; btn.textContent='Guardar'; return alert('Completa el nombre y el correo.'); }
+      if(DATA.profesoras.some(x=>x.id!==id && x.activo!==false && (x.email||x.usuario||'').toLowerCase()===email)){ btn.disabled=false; btn.textContent='Guardar'; return alert('Ese correo ya está en uso por otra profesora.'); }
+      const datos={nombre, email, usuario:email, grupos};
       if(id){
         await updateDoc(doc(db,'profesoras',id),{...datos, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
         Object.assign(DATA.profesoras.find(x=>x.id===id),datos);
