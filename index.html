@@ -524,6 +524,41 @@ window.openModalEst=function(id){
   document.body.insertAdjacentHTML('beforeend',html);
 };
 
+// Reajusta los cargos de un estudiante a sus valores actuales (tras cambiar modalidad/precio/tipo).
+// Solo toca meses NO pagados; genera la fila de alimentación mensual si hace falta.
+async function actualizarCargosEstudiante(estId){
+  const e=DATA.estudiantes.find(x=>x.id===estId);
+  const mens=cargosDe(estId).filter(c=>c.tipo==='mensualidad');
+  const alim=cargosDe(estId).filter(c=>c.tipo==='alimentacion');
+  const batch=writeBatch(db); let cambios=0;
+  // 1) mensualidad: meses no pagados al valor actual (ene/dic al 50%)
+  mens.forEach(c=>{
+    const target=(c.periodo===1||c.periodo===12)?Math.round((e.valorMensualidad||0)*0.5):(e.valorMensualidad||0);
+    if((c.abonado||0)===0 && c.valor!==target){
+      batch.update(doc(db,'cargos',c.id),{valor:target, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
+      c.valor=target; cambios++;
+    }
+  });
+  // 2) alimentación mensual: crear los meses que falten y actualizar los no pagados
+  if(e.alimentacion==='mensual'){
+    mens.forEach(mc=>{
+      const m=mc.periodo;
+      const aid=`${estId}_${ANIO}_alim_${String(m).padStart(2,'0')}`;
+      const existe=alim.find(c=>c.periodo===m);
+      if(!existe){
+        const cg={id:aid, estId, anio:ANIO, tipo:'alimentacion', periodo:m, etiqueta:`Alimentación ${MESES[m]} ${ANIO}`, valor:e.valorAlimentacion||0, abonado:0, activo:true};
+        batch.set(doc(db,'cargos',aid),{...cg, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
+        DATA.cargos.push(cg); cambios++;
+      } else if((existe.abonado||0)===0 && existe.valor!==(e.valorAlimentacion||0)){
+        batch.update(doc(db,'cargos',aid),{valor:e.valorAlimentacion||0, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
+        existe.valor=e.valorAlimentacion||0; cambios++;
+      }
+    });
+  }
+  if(cambios) await batch.commit();
+  return cambios;
+}
+
 window.saveEst=async function(id){
   const nombre=document.getElementById('mNombre').value.trim();
   if(!nombre)return alert('Ingresa el nombre del estudiante');
@@ -542,6 +577,12 @@ window.saveEst=async function(id){
     if(id){
       await updateDoc(doc(db,'estudiantes',id),{...datos, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
       const local=DATA.estudiantes.find(x=>x.id===id); Object.assign(local,datos);
+      // ofrecer actualizar los cargos a los nuevos valores
+      const tieneCargos = DATA.cargos.some(c=>c.estId===id && c.activo!==false && (c.tipo==='mensualidad'||c.tipo==='alimentacion'));
+      if(tieneCargos && confirm('¿Actualizar también los CARGOS de este estudiante a los nuevos valores?\n\n• Los meses NO pagados quedan con el valor actual.\n• Los meses ya pagados no se tocan.\n• Si ahora es "Mensual", se le crea la fila de alimentación que falte.\n\nOjo: si le habías bajado a mano el valor de algún mes NO pagado (descuento), volverá al valor completo.')){
+        try{ await actualizarCargosEstudiante(id); }
+        catch(err){ alert('El estudiante se guardó, pero no se pudieron actualizar los cargos: '+err.message); }
+      }
     }else{
       if((datos.valorMensualidad||0)<=0 && !confirm('⚠️ El valor de mensualidad quedó en $0.\nLos meses aparecerán como "sin valor" (no reflejan deuda).\n\n¿Continuar de todas formas?')){ btn.disabled=false; btn.textContent='Guardar'; return; }
       const nuevoId='e'+Date.now();
