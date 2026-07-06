@@ -52,6 +52,9 @@ body{background:#f5f7f7;color:#333}
 .badge-red{background:#FFEBEE;color:var(--red)}
 .loading,.empty{text-align:center;color:#999;padding:30px;font-size:14px}
 .lock-note{background:#FFF3E0;color:#E65100;border:1px solid #ffe0b2;border-radius:10px;padding:10px 14px;font-size:12px;margin-bottom:14px}
+.cumple-banner{background:linear-gradient(135deg,#FFF3E0,#FCE4EC);border:1px solid #ffd6a5;border-radius:14px;padding:12px 16px;margin-bottom:14px}
+.cumple-tit{font-weight:700;color:#E65100;font-size:14px;margin-bottom:6px}
+.cumple-lista{font-size:13px;color:#5d4037;line-height:1.7}
 .vista-nav{display:flex;gap:6px}
 .vista-btn{padding:8px 16px;border-radius:10px;border:1.5px solid var(--border);background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:#888}
 .vista-btn.active{background:var(--teal);color:#fff;border-color:var(--teal)}
@@ -368,6 +371,36 @@ function renderReporte(){
     <div class="almcount">🍽️ Almuerzos del día: ${totalAlm} &nbsp;·&nbsp; 👦 Asistencia: ${totalAsist} de ${totalEst}</div>
     ${bloques||'<div class="empty">No hay estudiantes registrados.</div>'}`;
 }
+// ─── RECORDATORIO DE CUMPLEAÑOS ───────────────────────────────────────────────
+// Estudiantes cuyo cumpleaños "aplica" hoy. Si hoy es lunes, incluye sábado y
+// domingo (los del fin de semana se recuerdan el siguiente día de clase).
+function cumpleHoy(){
+  const hoy=new Date(); hoy.setHours(0,0,0,0);
+  const fechas=[new Date(hoy)];
+  if(hoy.getDay()===1){ // lunes: agrega el sábado y domingo anteriores
+    const dom=new Date(hoy); dom.setDate(hoy.getDate()-1); fechas.push(dom);
+    const sab=new Date(hoy); sab.setDate(hoy.getDate()-2); fechas.push(sab);
+  }
+  const mmdd=d=>String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const claves=new Set(fechas.map(mmdd));
+  const hoyKey=mmdd(hoy);
+  return activos(DATA.estudiantes)
+    .filter(e=>gruposVisibles.includes(e.grupo) && e.fechaNacimiento && claves.has(String(e.fechaNacimiento).slice(5,10)))
+    .map(e=>{
+      const edad=hoy.getFullYear()-parseInt(String(e.fechaNacimiento).slice(0,4));
+      return {nombre:e.nombre, grupo:e.grupo, edad:(edad>0&&edad<120)?edad:null, esHoy:String(e.fechaNacimiento).slice(5,10)===hoyKey};
+    })
+    .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+}
+function bannerCumple(){
+  const lista=cumpleHoy();
+  if(!lista.length) return '';
+  const esLunes=new Date().getDay()===1;
+  const items=lista.map(x=>`🎂 <b>${x.nombre}</b> <span style="opacity:.85">(${x.grupo}${x.edad?` · cumple ${x.edad}`:''})</span>${(esLunes&&!x.esHoy)?' <span style="font-size:11px;opacity:.75">— fin de semana</span>':''}`).join('<br>');
+  const titulo=esLunes?'🎉 Cumpleaños del fin de semana y de hoy':'🎉 ¡Feliz cumpleaños hoy!';
+  return `<div class="cumple-banner"><div class="cumple-tit">${titulo}</div><div class="cumple-lista">${items}</div></div>`;
+}
+
 function renderRegistro(){
   const c=document.getElementById('mainContent');
   if(!grupoSel){ c.innerHTML='<div class="empty">No tienes grupos asignados. Pide al Presidente que te asigne grupos en la app de Pagos.</div>'; return; }
@@ -378,7 +411,7 @@ function renderRegistro(){
   const totalAsist=ests.filter(e=>regOf(e.id)?.asistio).length;
   const totalAlm=ests.filter(e=>regOf(e.id)?.almorzo).length;
 
-  let html='';
+  let html = fechaSel===hoyLocal() ? bannerCumple() : '';
   if(!esProfe() && esPasado) html+=`<div class="lock-note">✏️ Estás viendo/corrigiendo un día pasado (${fechaSel}). Los cambios quedan registrados a tu nombre.</div>`;
   html+=`<div class="daystats">
     <div class="daystat"><div class="n">${ests.length}</div><div class="l">Estudiantes</div></div>
