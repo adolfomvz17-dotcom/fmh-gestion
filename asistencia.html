@@ -233,7 +233,10 @@ async function doLogin(){
 window.doLogin=doLogin;
 window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} try{ await signOut(auth); }catch(err){} currentUser=null;document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
 window.cambiarGrupo=function(g){grupoSel=g;renderRegistro();};
-window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else loadRegistrosDia(fechaSel);};
+window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else if(vista==='edades') renderEdades(); else loadRegistrosDia(fechaSel);};
+window.cambiarFiltroGrupo=function(g){ filtroGrupo=g; if(vista==='reporte') renderReporte(); else if(vista==='edades') renderEdades(); };
+window.cambiarBuscar=function(v){ buscarNombre=v; if(vista==='reporte') renderReporte(); else if(vista==='edades') renderEdades(); else renderRegistro(); };
+window.cambiarMes=function(m){ mesSel=m||hoyLocal().slice(0,7); iniciarMensual(); };
 
 // Trae del servidor los registros del día indicado (datos frescos antes de corregir)
 async function loadRegistrosDia(fecha){
@@ -247,40 +250,59 @@ async function loadRegistrosDia(fecha){
 }
 
 // ─── BARRA DE CONTROLES Y VISTAS ──────────────────────────────────────────────
-let vista='registro', unsubResumen=null, regDelDia=[];
+let vista='registro', unsubResumen=null, regDelDia=[], filtroGrupo='', buscarNombre='', mesSel=hoyLocal().slice(0,7), regDelMes=[];
+const matchN = e => { const q=(buscarNombre||'').trim().toLowerCase(); return !q || (e.nombre||'').toLowerCase().includes(q); };
 
 function renderControles(){
   const bar=document.getElementById('controlsBar');
   const verResumen = currentUser.rol!=='profe';
   const navHtml = verResumen ? `<div class="vista-nav">
       <button class="vista-btn" id="vbReg" onclick="setVista('registro')">📋 Registro</button>
-      <button class="vista-btn" id="vbRes" onclick="setVista('resumen')">📊 Resumen general</button>
+      <button class="vista-btn" id="vbRes" onclick="setVista('resumen')">📊 Resumen</button>
       <button class="vista-btn" id="vbRep" onclick="setVista('reporte')">🖨️ Reporte diario</button>
+      <button class="vista-btn" id="vbMes" onclick="setVista('mensual')">📅 Mensual</button>
       <button class="vista-btn" id="vbEda" onclick="setVista('edades')">👶 Edades</button>
     </div>` : '';
-  const grupoHtml = (vista==='registro') ? `<div><label>Grupo</label><select id="grupoSel" onchange="cambiarGrupo(this.value)">${gruposVisibles.map(g=>`<option value="${g}" ${g===grupoSel?'selected':''}>${g}</option>`).join('')||'<option value="">Sin grupos</option>'}</select></div>` : '';
-  const fechaHtml = (vista==='edades') ? '' : (esProfe()
-    ? `<div><label>Fecha</label><span class="fecha-hoy">📅 Hoy, ${new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long'})}</span></div>`
-    : `<div><label>Fecha</label><input type="date" id="fechaSel" value="${fechaSel}" max="${hoyLocal()}" onchange="cambiarFecha(this.value)"/></div>`);
-  bar.innerHTML=navHtml+grupoHtml+fechaHtml;
-  if(verResumen){ const map={registro:'vbReg',resumen:'vbRes',reporte:'vbRep',edades:'vbEda'}; document.getElementById(map[vista]).classList.add('active'); }
+  let grupoHtml='';
+  if(vista==='registro'){
+    grupoHtml=`<div><label>Grupo</label><select id="grupoSel" onchange="cambiarGrupo(this.value)">${gruposVisibles.map(g=>`<option value="${g}" ${g===grupoSel?'selected':''}>${g}</option>`).join('')||'<option value="">Sin grupos</option>'}</select></div>`;
+  }else if(vista==='reporte'||vista==='edades'){
+    grupoHtml=`<div><label>Grupo</label><select id="filtroGrupo" onchange="cambiarFiltroGrupo(this.value)"><option value="" ${filtroGrupo===''?'selected':''}>Todos los grupos</option>${gruposVisibles.map(g=>`<option value="${g}" ${g===filtroGrupo?'selected':''}>${g}</option>`).join('')}</select></div>`;
+  }
+  let fechaHtml='';
+  if(vista==='mensual'){
+    fechaHtml=`<div><label>Mes</label><input type="month" id="mesSel" value="${mesSel}" max="${hoyLocal().slice(0,7)}" onchange="cambiarMes(this.value)"/></div>`;
+  }else if(vista==='edades'){
+    fechaHtml=`<div><label>Edad a la fecha</label><input type="date" id="fechaSel" value="${fechaSel}" onchange="cambiarFecha(this.value)"/></div>`;
+  }else{
+    fechaHtml = esProfe()
+      ? `<div><label>Fecha</label><span class="fecha-hoy">📅 Hoy, ${new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long'})}</span></div>`
+      : `<div><label>Fecha</label><input type="date" id="fechaSel" value="${fechaSel}" max="${hoyLocal()}" onchange="cambiarFecha(this.value)"/></div>`;
+  }
+  let buscarHtml='';
+  if(vista==='registro'||vista==='reporte'||vista==='edades'){
+    buscarHtml=`<div style="flex:1;min-width:150px"><label>Buscar por nombre</label><input type="text" id="buscarNombre" placeholder="🔎 Nombre…" value="${buscarNombre}" oninput="cambiarBuscar(this.value)"/></div>`;
+  }
+  bar.innerHTML=navHtml+grupoHtml+fechaHtml+buscarHtml;
+  if(verResumen){ const map={registro:'vbReg',resumen:'vbRes',reporte:'vbRep',mensual:'vbMes',edades:'vbEda'}; const el=document.getElementById(map[vista]); if(el) el.classList.add('active'); }
 }
 
 window.setVista=function(v){
   vista=v;
   if(unsubResumen){unsubResumen();unsubResumen=null;}
   renderControles();
-  if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='edades') iniciarEdades(); else loadRegistrosDia(fechaSel);
+  if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='mensual') iniciarMensual(); else if(v==='edades') iniciarEdades(); else loadRegistrosDia(fechaSel);
 };
 
 // ─── EDADES (solo Presidente, Coordinadora y Psicóloga — no profesoras) ────────
-function edadYM(fechaNac){
-  const hoy=new Date(); hoy.setHours(0,0,0,0);
+function edadYM(fechaNac, refStr){
+  const ref = refStr ? new Date(String(refStr)+'T00:00:00') : new Date();
+  ref.setHours(0,0,0,0);
   const n=new Date(String(fechaNac)+'T00:00:00');
-  if(isNaN(n)) return null;
-  let a=hoy.getFullYear()-n.getFullYear();
-  let m=hoy.getMonth()-n.getMonth();
-  if(hoy.getDate()<n.getDate()) m-=1;
+  if(isNaN(n)||isNaN(ref)) return null;
+  let a=ref.getFullYear()-n.getFullYear();
+  let m=ref.getMonth()-n.getMonth();
+  if(ref.getDate()<n.getDate()) m-=1;
   if(m<0){ a-=1; m+=12; }
   if(a<0) return null;
   return {a,m};
@@ -298,10 +320,10 @@ function renderEdades(){
   const c=document.getElementById('mainContent');
   const ests=activos(DATA.estudiantes);
   const sinFecha=ests.filter(e=>!e.fechaNacimiento);
-  const fechaTxt=new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const refTxt=new Date(String(fechaSel)+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   const fmtF=f=>{const d=new Date(String(f)+'T00:00:00');return isNaN(d)?f:d.toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric'});};
-  const bloques=DATA.grupos.map(g=>{
-    const enG=ests.filter(e=>e.grupo===g && e.fechaNacimiento).map(e=>({e,ym:edadYM(e.fechaNacimiento)})).filter(x=>x.ym).sort((a,b)=>(a.e.nombre||'').localeCompare(b.e.nombre||''));
+  const bloques=DATA.grupos.filter(g=>!filtroGrupo||g===filtroGrupo).map(g=>{
+    const enG=ests.filter(e=>e.grupo===g && e.fechaNacimiento && matchN(e)).map(e=>({e,ym:edadYM(e.fechaNacimiento, fechaSel)})).filter(x=>x.ym).sort((a,b)=>(a.e.nombre||'').localeCompare(b.e.nombre||''));
     if(!enG.length) return '';
     return `<div class="repgrupo">
       <h3>${g}</h3>
@@ -316,10 +338,63 @@ function renderEdades(){
       <div style="font-weight:700;color:var(--blue)">👶 Edades de los estudiantes</div>
       <button class="vista-btn" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="window.print()">🖨️ Imprimir / PDF</button>
     </div>
-    <div class="report-header"><h2>Fundación Mis Habilidades</h2><div style="font-weight:600;color:var(--blue)">Edades de los estudiantes</div><div class="meta">${fechaTxt}</div></div>
-    <div class="live-tag no-print"><span class="live-dot"></span>Actualizado a ${fechaTxt}</div>
-    ${bloques||'<div class="empty">Aún no hay estudiantes con fecha de nacimiento cargada.</div>'}
+    <div class="report-header"><h2>Fundación Mis Habilidades</h2><div style="font-weight:600;color:var(--blue)">Edades de los estudiantes</div><div class="meta">Edad calculada a: ${refTxt}</div></div>
+    <div class="live-tag no-print"><span class="live-dot"></span>Edad a la fecha: ${refTxt}</div>
+    ${bloques||'<div class="empty">No hay estudiantes con fecha de nacimiento que coincidan.</div>'}
     ${sinFecha.length?`<div class="lock-note no-print" style="margin-top:12px">📅 ${sinFecha.length} estudiante(s) sin fecha de nacimiento — cárgala en la app de Pagos (Editar).</div>`:''}`;
+}
+
+// ─── REPORTE MENSUAL (solo admin/coord) ───────────────────────────────────────
+async function iniciarMensual(){
+  const c=document.getElementById('mainContent');
+  c.innerHTML='<div class="loading">Cargando el mes…</div>';
+  try{
+    const snap=await getDocs(query(collection(db,'registros'), where('fecha','>=',mesSel+'-01'), where('fecha','<=',mesSel+'-31')));
+    regDelMes=snap.docs.map(d=>({id:d.id,...d.data()}));
+  }catch(err){ c.innerHTML='<div class="empty">No se pudo cargar el mes: '+err.message+'</div>'; return; }
+  if(vista==='mensual') renderMensual();
+}
+function renderMensual(){
+  const c=document.getElementById('mainContent');
+  const ests=activos(DATA.estudiantes);
+  const asisPorEst={}, almPorEst={}, diasSet=new Set();
+  regDelMes.forEach(r=>{
+    if(r.fecha) diasSet.add(r.fecha);
+    if(r.asistio) asisPorEst[r.estId]=(asisPorEst[r.estId]||0)+1;
+    if(r.almorzo) almPorEst[r.estId]=(almPorEst[r.estId]||0)+1;
+  });
+  const nombreMes=new Date(mesSel+'-01T00:00:00').toLocaleDateString('es-CO',{month:'long',year:'numeric'});
+  const filas=DATA.grupos.map(g=>{
+    const enG=ests.filter(e=>e.grupo===g);
+    if(!enG.length) return null;
+    const asist=enG.reduce((s,e)=>s+(asisPorEst[e.id]||0),0);
+    const alm=enG.reduce((s,e)=>s+(almPorEst[e.id]||0),0);
+    return {g, total:enG.length, asist, alm};
+  }).filter(Boolean);
+  const T={asist:0,alm:0,total:0}; filas.forEach(f=>{T.asist+=f.asist;T.alm+=f.alm;T.total+=f.total;});
+  const detalle=DATA.grupos.map(g=>{
+    const enG=ests.filter(e=>e.grupo===g).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    if(!enG.length) return '';
+    return `<div class="repgrupo">
+      <h3>${g}</h3>
+      <table class="rtab"><thead><tr><th>Estudiante</th><th>Días asistió</th><th>Almuerzos</th></tr></thead><tbody>
+        ${enG.map(e=>`<tr><td>${e.nombre}</td><td>${asisPorEst[e.id]||0}</td><td>${e.alimentacion==='no'?'<span style="color:#bbb">no aplica</span>':(almPorEst[e.id]||0)}</td></tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }).join('');
+  c.innerHTML=`
+    <div class="no-print" style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--blue)">📅 Reporte mensual — ${nombreMes}</div>
+      <button class="vista-btn" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="window.print()">🖨️ Imprimir / PDF</button>
+    </div>
+    <div class="report-header"><h2>Fundación Mis Habilidades</h2><div style="font-weight:600;color:var(--blue)">Reporte mensual de asistencia y almuerzo</div><div class="meta">${nombreMes} · ${diasSet.size} día(s) con registro</div></div>
+    <div style="font-weight:700;color:var(--blue);margin:4px 0 8px">Resumen por grado</div>
+    <table class="rtab"><thead><tr><th>Grado</th><th>Estud.</th><th>Asistencias</th><th>Almuerzos</th></tr></thead><tbody>
+      ${filas.map(f=>`<tr><td><b>${f.g}</b></td><td>${f.total}</td><td>${f.asist}</td><td>${f.alm}</td></tr>`).join('')}
+      <tr class="tot"><td>TOTAL</td><td>${T.total}</td><td>${T.asist}</td><td>${T.alm}</td></tr>
+    </tbody></table>
+    <div style="font-weight:700;color:var(--blue);margin:18px 0 8px">Detalle por grado</div>
+    ${detalle||'<div class="empty">Sin registros en el mes.</div>'}`;
 }
 
 // Resumen general EN VIVO (escucha los registros del día seleccionado)
@@ -393,8 +468,8 @@ function renderReporte(){
   const fechaTxt=new Date(fechaSel+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
   let totalAlm=0, totalAsist=0, totalEst=0;
-  const bloques=DATA.grupos.map(g=>{
-    const enG=ests.filter(e=>e.grupo===g).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const bloques=DATA.grupos.filter(g=>!filtroGrupo||g===filtroGrupo).map(g=>{
+    const enG=ests.filter(e=>e.grupo===g && matchN(e)).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
     if(!enG.length) return '';
     const aG=enG.filter(e=>asistSet.has(e.id)).length;
     const lG=enG.filter(e=>almSet.has(e.id)).length;
@@ -454,21 +529,23 @@ function bannerCumple(){
 function renderRegistro(){
   const c=document.getElementById('mainContent');
   if(!grupoSel){ c.innerHTML='<div class="empty">No tienes grupos asignados. Pide al Presidente que te asigne grupos en la app de Pagos.</div>'; return; }
-  const ests=activos(DATA.estudiantes).filter(e=>e.grupo===grupoSel).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const estsGrupo=activos(DATA.estudiantes).filter(e=>e.grupo===grupoSel).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const ests=estsGrupo.filter(matchN);
   const esPasado = fechaSel<hoyLocal();
   const soloLectura = esProfe() && esPasado; // profe no edita días pasados (no debería poder elegirlos, por si acaso)
 
-  const totalAsist=ests.filter(e=>regOf(e.id)?.asistio).length;
-  const totalAlm=ests.filter(e=>regOf(e.id)?.almorzo).length;
+  const totalAsist=estsGrupo.filter(e=>regOf(e.id)?.asistio).length;
+  const totalAlm=estsGrupo.filter(e=>regOf(e.id)?.almorzo).length;
 
   let html = fechaSel===hoyLocal() ? bannerCumple() : '';
   if(!esProfe() && esPasado) html+=`<div class="lock-note">✏️ Estás viendo/corrigiendo un día pasado (${fechaSel}). Los cambios quedan registrados a tu nombre.</div>`;
   html+=`<div class="daystats">
-    <div class="daystat"><div class="n">${ests.length}</div><div class="l">Estudiantes</div></div>
+    <div class="daystat"><div class="n">${estsGrupo.length}</div><div class="l">Estudiantes</div></div>
     <div class="daystat"><div class="n">${totalAsist}</div><div class="l">Asistieron</div></div>
     <div class="daystat"><div class="n">${totalAlm}</div><div class="l">Almorzaron</div></div>
   </div>`;
-  if(!ests.length){ c.innerHTML=html+'<div class="empty">No hay estudiantes activos en este grupo.</div>'; return; }
+  if(!estsGrupo.length){ c.innerHTML=html+'<div class="empty">No hay estudiantes activos en este grupo.</div>'; return; }
+  if(!ests.length){ c.innerHTML=html+'<div class="empty">Ningún estudiante coincide con la búsqueda.</div>'; return; }
 
   html+=ests.map(e=>{
     const r=regOf(e.id);
