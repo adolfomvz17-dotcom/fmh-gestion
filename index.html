@@ -648,6 +648,9 @@ function renderPagos(c){
   pintarPagTab();
 }
 window.setPagTab=function(t){pagTab=t;renderPagos(document.getElementById('mainContent'));};
+function filtrarPagoCards(sel, q){ q=(q||'').toLowerCase().trim(); document.querySelectorAll(sel).forEach(c=>{ c.style.display=(!q||(c.dataset.nombre||'').includes(q))?'':'none'; }); }
+window.filtrarMens=v=>filtrarPagoCards('.mens-card', v);
+window.filtrarMatr=v=>filtrarPagoCards('.matr-card', v);
 
 function pintarPagTab(){
   const body=document.getElementById('pagBody');
@@ -693,7 +696,7 @@ function renderTabMens(body){
   let head=`<div class="toolbar">
       <div style="font-weight:700;color:var(--blue)">Mensualidades ${ANIO}</div>
       ${puedeGenerar?`<button class="btn ${hayCargos?'btn-outline':'btn-pink'}" onclick="generarCargosAnio()">📅 ${hayCargos?'Revisar / completar cargos del año':'Generar cargos del año '+ANIO}</button>`:''}
-    </div>`;
+    </div>${hayCargos?`<div class="search-bar" style="margin-bottom:14px"><input placeholder="🔎 Buscar estudiante…" oninput="filtrarMens(this.value)"/></div>`:''}`;
 
   if(!hayCargos){
     body.innerHTML=head+`<div class="card"><div class="card-body construccion">
@@ -738,7 +741,7 @@ function renderTabMens(body){
         ${can.registrarAbono()?`<div class="hint" style="margin-top:5px">Toca un mes para ajustar su valor (descuento por inasistencia).</div>`:''}
       </div>`;
     }
-    return `<div class="est-pago-card">
+    return `<div class="est-pago-card mens-card" data-nombre="${(e.nombre||'').toLowerCase()}">
       <div class="est-pago-top">
         <span class="est-pago-nombre">${e.nombre} <span class="badge badge-pink" style="font-weight:600">${e.grupo}</span></span>
         <span class="est-pago-debe">${estadoDer}</span>
@@ -1143,7 +1146,8 @@ function renderTabMatricula(body){
         <option value="${ANIO+1}" ${matYear===ANIO+1?'selected':''}>Año ${ANIO+1} (anticipada)</option>
       </select>
       ${puedeGestionar&&sinMatricula.length?`<button class="btn btn-pink" onclick="generarMatriculas()">🎓 Generar matrícula ${matYear} (${sinMatricula.length} sin crear)</button>`:''}
-    </div>`;
+    </div>
+    <div class="search-bar" style="margin-bottom:14px"><input placeholder="🔎 Buscar estudiante…" oninput="filtrarMatr(this.value)"/></div>`;
   if(aviso.msg) head+=`<div class="alert ${aviso.clase}">${aviso.msg}</div>`;
 
   const cards=ests.map(e=>{
@@ -1159,7 +1163,7 @@ function renderTabMatricula(body){
       if(puedePagar && est!=='pagado') acciones+=`<button class="btn btn-pink btn-sm" onclick="openModalPagoMatricula('${e.id}')">💵 Registrar pago</button>`;
       if(puedeGestionar) acciones+=`<button class="btn btn-blue btn-sm" onclick="openModalMatricula('${e.id}')">✏️ Valor</button>`;
     }
-    return `<div class="est-pago-card">
+    return `<div class="est-pago-card matr-card" data-nombre="${(e.nombre||'').toLowerCase()}">
       <div class="est-pago-top">
         <span class="est-pago-nombre">${e.nombre} <span class="badge badge-pink" style="font-weight:600">${e.grupo}</span></span>
         <span style="font-size:13px">${estadoHtml}</span>
