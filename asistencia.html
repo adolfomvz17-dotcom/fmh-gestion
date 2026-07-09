@@ -256,21 +256,71 @@ function renderControles(){
       <button class="vista-btn" id="vbReg" onclick="setVista('registro')">📋 Registro</button>
       <button class="vista-btn" id="vbRes" onclick="setVista('resumen')">📊 Resumen general</button>
       <button class="vista-btn" id="vbRep" onclick="setVista('reporte')">🖨️ Reporte diario</button>
+      <button class="vista-btn" id="vbEda" onclick="setVista('edades')">👶 Edades</button>
     </div>` : '';
   const grupoHtml = (vista==='registro') ? `<div><label>Grupo</label><select id="grupoSel" onchange="cambiarGrupo(this.value)">${gruposVisibles.map(g=>`<option value="${g}" ${g===grupoSel?'selected':''}>${g}</option>`).join('')||'<option value="">Sin grupos</option>'}</select></div>` : '';
-  const fechaHtml = esProfe()
+  const fechaHtml = (vista==='edades') ? '' : (esProfe()
     ? `<div><label>Fecha</label><span class="fecha-hoy">📅 Hoy, ${new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long'})}</span></div>`
-    : `<div><label>Fecha</label><input type="date" id="fechaSel" value="${fechaSel}" max="${hoyLocal()}" onchange="cambiarFecha(this.value)"/></div>`;
+    : `<div><label>Fecha</label><input type="date" id="fechaSel" value="${fechaSel}" max="${hoyLocal()}" onchange="cambiarFecha(this.value)"/></div>`);
   bar.innerHTML=navHtml+grupoHtml+fechaHtml;
-  if(verResumen){ const map={registro:'vbReg',resumen:'vbRes',reporte:'vbRep'}; document.getElementById(map[vista]).classList.add('active'); }
+  if(verResumen){ const map={registro:'vbReg',resumen:'vbRes',reporte:'vbRep',edades:'vbEda'}; document.getElementById(map[vista]).classList.add('active'); }
 }
 
 window.setVista=function(v){
   vista=v;
   if(unsubResumen){unsubResumen();unsubResumen=null;}
   renderControles();
-  if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else loadRegistrosDia(fechaSel);
+  if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='edades') iniciarEdades(); else loadRegistrosDia(fechaSel);
 };
+
+// ─── EDADES (solo Presidente, Coordinadora y Psicóloga — no profesoras) ────────
+function edadYM(fechaNac){
+  const hoy=new Date(); hoy.setHours(0,0,0,0);
+  const n=new Date(String(fechaNac)+'T00:00:00');
+  if(isNaN(n)) return null;
+  let a=hoy.getFullYear()-n.getFullYear();
+  let m=hoy.getMonth()-n.getMonth();
+  if(hoy.getDate()<n.getDate()) m-=1;
+  if(m<0){ a-=1; m+=12; }
+  if(a<0) return null;
+  return {a,m};
+}
+async function iniciarEdades(){
+  const c=document.getElementById('mainContent');
+  c.innerHTML='<div class="loading">Cargando edades…</div>';
+  try{ // refresca estudiantes para reflejar fechas recién cargadas en Pagos
+    const snap=await getDocs(collection(db,'estudiantes'));
+    DATA.estudiantes=snap.docs.map(d=>({id:d.id,...d.data()}));
+  }catch(err){ /* si falla, usa lo que haya en memoria */ }
+  if(vista==='edades') renderEdades();
+}
+function renderEdades(){
+  const c=document.getElementById('mainContent');
+  const ests=activos(DATA.estudiantes);
+  const sinFecha=ests.filter(e=>!e.fechaNacimiento);
+  const fechaTxt=new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const fmtF=f=>{const d=new Date(String(f)+'T00:00:00');return isNaN(d)?f:d.toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric'});};
+  const bloques=DATA.grupos.map(g=>{
+    const enG=ests.filter(e=>e.grupo===g && e.fechaNacimiento).map(e=>({e,ym:edadYM(e.fechaNacimiento)})).filter(x=>x.ym).sort((a,b)=>(a.e.nombre||'').localeCompare(b.e.nombre||''));
+    if(!enG.length) return '';
+    return `<div class="repgrupo">
+      <h3>${g}</h3>
+      <div class="sub">${enG.length} estudiante(s)</div>
+      <table class="rtab"><thead><tr><th>Estudiante</th><th>Nacimiento</th><th>Edad</th></tr></thead><tbody>
+        ${enG.map(x=>`<tr><td>${x.e.nombre}</td><td>${fmtF(x.e.fechaNacimiento)}</td><td><b>${x.ym.a} años · ${x.ym.m} mes(es)</b></td></tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }).join('');
+  c.innerHTML=`
+    <div class="no-print" style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--blue)">👶 Edades de los estudiantes</div>
+      <button class="vista-btn" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="window.print()">🖨️ Imprimir / PDF</button>
+    </div>
+    <div class="report-header"><h2>Fundación Mis Habilidades</h2><div style="font-weight:600;color:var(--blue)">Edades de los estudiantes</div><div class="meta">${fechaTxt}</div></div>
+    <div class="live-tag no-print"><span class="live-dot"></span>Actualizado a ${fechaTxt}</div>
+    ${bloques||'<div class="empty">Aún no hay estudiantes con fecha de nacimiento cargada.</div>'}
+    ${sinFecha.length?`<div class="lock-note no-print" style="margin-top:12px">📅 ${sinFecha.length} estudiante(s) sin fecha de nacimiento — cárgala en la app de Pagos (Editar).</div>`:''}`;
+}
 
 // Resumen general EN VIVO (escucha los registros del día seleccionado)
 function iniciarResumen(){
