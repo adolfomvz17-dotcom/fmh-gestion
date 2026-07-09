@@ -511,6 +511,12 @@ window.openModalEst=function(id){
         <input id="mBalance" type="number" value="${e.almuerzosBalance||0}"/>
         <span class="hint">Positivo = días a favor. Negativo = días que debe (ej: -3). Cero = al día.</span>
       </div>
+      <div class="form-group form-full" style="border-top:1px dashed var(--border);padding-top:12px;margin-top:2px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600"><input type="checkbox" id="mDividido" ${e.pagoDividido?'checked':''} style="width:auto"/> Pago dividido entre dos acudientes (padres separados)</label>
+      </div>
+      <div class="form-group"><label>Acudiente 1 (nombre)</label><input id="mAcuA" value="${e.acudienteA||''}" placeholder="Ej: Ana"/></div>
+      <div class="form-group"><label>Acudiente 2 (nombre)</label><input id="mAcuB" value="${e.acudienteB||''}" placeholder="Ej: Luis"/></div>
+      <div class="form-group form-full"><label>% que paga el Acudiente 1</label><input id="mPorcA" type="number" min="0" max="100" value="${e.porcentajeA||50}"/><span class="hint">El Acudiente 2 paga el resto. Solo aplica si marcaste "pago dividido".</span></div>
       ${!id?`<div class="form-group form-full">
         <label>Mes de ingreso ${ANIO} (se le crean los cargos desde ese mes)</label>
         <select id="mIngreso">${MESES.slice(1).map((nombre,i)=>`<option value="${i+1}" ${i+1===MES_ACTUAL?'selected':''}>${nombre}</option>`).join('')}</select>
@@ -573,6 +579,10 @@ window.saveEst=async function(id){
     valorAlimentacion:parseInt(document.getElementById('mValAlimM').value)||0,
     valorAlmuerzo:parseInt(document.getElementById('mValA').value)||0,
     almuerzosBalance:parseInt(document.getElementById('mBalance').value)||0,
+    pagoDividido:document.getElementById('mDividido').checked,
+    acudienteA:document.getElementById('mAcuA').value.trim(),
+    acudienteB:document.getElementById('mAcuB').value.trim(),
+    porcentajeA:Math.min(100,Math.max(0,parseInt(document.getElementById('mPorcA').value)||50)),
   };
   const btn=document.getElementById('btnSaveEst'); btn.disabled=true; btn.textContent='Guardando…';
   try{
@@ -822,6 +832,22 @@ window.generarCargosEstudiante=async function(estId){
 };
 
 // ─── REGISTRAR ABONO (suma atómica) ──────────────────────────────────────────
+// Campo "¿Quién pagó?": para estudiantes de pago dividido, lista los dos acudientes;
+// para el resto, un texto libre opcional (solo a modo de registro).
+function pagadorFieldHtml(estId, pfx){
+  const e=DATA.estudiantes.find(x=>x.id===estId);
+  if(e&&e.pagoDividido){
+    return `<div class="form-group form-full"><label>¿Quién pagó?</label><select id="${pfx}Pagador"><option value="A">${e.acudienteA||'Acudiente 1'}</option><option value="B">${e.acudienteB||'Acudiente 2'}</option></select></div>`;
+  }
+  return `<div class="form-group form-full"><label>¿Quién pagó? (opcional)</label><input id="${pfx}Pagador" placeholder="Nombre de quien paga…"/></div>`;
+}
+function leerPagador(estId, pfx){
+  const e=DATA.estudiantes.find(x=>x.id===estId);
+  const el=document.getElementById(pfx+'Pagador'); if(!el) return {pagador:'', pagadorLado:''};
+  if(e&&e.pagoDividido){ const lado=el.value; return {pagador:(lado==='B'?e.acudienteB:e.acudienteA)||('Acudiente '+(lado==='B'?'2':'1')), pagadorLado:lado}; }
+  return {pagador:(el.value||'').trim(), pagadorLado:''};
+}
+
 window.openModalAbono=function(estId, tipo){
   tipo=tipo||'mensualidad';
   const e=DATA.estudiantes.find(x=>x.id===estId);
@@ -844,6 +870,7 @@ window.openModalAbono=function(estId, tipo){
       <div class="form-group"><label>Monto del abono ($)</label><input id="abMonto" type="number" min="1" placeholder="0"/></div>
       <div class="form-group"><label>Fecha</label><input id="abFecha" type="date" value="${hoy}"/></div>
       <div class="form-group form-full"><label>Forma de pago</label><select id="abMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
+      ${pagadorFieldHtml(estId,'ab')}
     </div>
     <div class="hint" style="margin-top:8px">Si el monto supera lo que falta en ese mes, el sistema te avisará y podrás aplicar el excedente al mes siguiente.</div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
@@ -861,6 +888,7 @@ window.saveAbono=async function(estId, tipo){
   const monto=parseInt(document.getElementById('abMonto').value)||0;
   const fecha=document.getElementById('abFecha').value||hoyLocal();
   const metodo=document.getElementById('abMetodo').value||'efectivo';
+  const {pagador,pagadorLado}=leerPagador(estId,'ab');
   if(monto<=0) return alert('Ingresa un monto mayor a cero.');
 
   const cargo=DATA.cargos.find(c=>c.id===cargoId);
@@ -904,9 +932,9 @@ window.saveAbono=async function(estId, tipo){
       const abId='ab'+Date.now()+'_'+ap.cargo.periodo;
       batch.set(doc(db,'abonos',abId),{
         estId, estudiante:e.nombre, cargoId:ap.cargo.id, tipo, etiqueta:ap.cargo.etiqueta,
-        valor:ap.monto, fecha, metodo, registradoPor:currentUser.usuario, creadoEn:serverTimestamp()
+        valor:ap.monto, fecha, metodo, pagador, pagadorLado, registradoPor:currentUser.usuario, creadoEn:serverTimestamp()
       });
-      DATA.abonos.push({id:abId, estId, estudiante:e.nombre, cargoId:ap.cargo.id, tipo, etiqueta:ap.cargo.etiqueta, valor:ap.monto, fecha, metodo});
+      DATA.abonos.push({id:abId, estId, estudiante:e.nombre, cargoId:ap.cargo.id, tipo, etiqueta:ap.cargo.etiqueta, valor:ap.monto, fecha, metodo, pagador, pagadorLado});
     });
     await batch.commit();
     // actualizar memoria local (refleja la suma sin recargar)
@@ -970,10 +998,12 @@ function renderTabHist(body){
         <span style="font-size:13px;color:#555">${lista.length} abono(s) · <b style="color:var(--green)">${fmt(total)}</b></span>
       </div>
       <table class="responsive" style="margin-top:10px">
-        <thead><tr><th>Fecha</th><th>Concepto</th><th>Registró</th><th>Valor</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Concepto</th><th>Pagó</th><th>Forma</th><th>Registró</th><th>Valor</th></tr></thead>
         <tbody>${lista.map(a=>`<tr>
           <td data-label="Fecha">${a.fecha||'—'}</td>
           <td data-label="Concepto">${a.etiqueta||'—'}</td>
+          <td data-label="Pagó">${a.pagador||'—'}</td>
+          <td data-label="Forma">${a.metodo?(a.metodo==='transferencia'?'🏦 Transf.':'💵 Efectivo'):'—'}</td>
           <td data-label="Registró">${a.registradoPor||'—'}</td>
           <td data-label="Valor"><b>${fmt(a.valor)}</b></td>
         </tr>`).join('')}</tbody>
@@ -1029,6 +1059,7 @@ window.openModalRecarga=function(estId){
       <div class="form-group"><label>Días a recargar</label><input id="rcDias" type="number" min="1" placeholder="0" oninput="document.getElementById('rcEquiv').textContent=((parseInt(this.value)||0)*${va}).toLocaleString('es-CO')"/></div>
       <div class="form-group"><label>Fecha</label><input id="rcFecha" type="date" value="${hoyLocal()}"/></div>
       <div class="form-group form-full"><label>Forma de pago</label><select id="rcMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
+      ${pagadorFieldHtml(estId,'rc')}
     </div>
     <div class="hint" style="margin-top:8px">Equivale a $<span id="rcEquiv">0</span> (a ${fmt(va)} por día). Suma días al saldo a favor del estudiante.</div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
@@ -1044,6 +1075,7 @@ window.saveRecarga=async function(estId){
   const dias=parseInt(document.getElementById('rcDias').value)||0;
   const fecha=document.getElementById('rcFecha').value||hoyLocal();
   const metodo=document.getElementById('rcMetodo').value||'efectivo';
+  const {pagador,pagadorLado}=leerPagador(estId,'rc');
   if(dias<=0) return alert('Ingresa un número de días mayor a cero.');
   const valor=dias*(e.valorAlmuerzo||0);
   const btn=document.getElementById('btnRecarga'); btn.disabled=true; btn.textContent='Guardando…';
@@ -1051,10 +1083,10 @@ window.saveRecarga=async function(estId){
     const batch=writeBatch(db);
     batch.update(doc(db,'estudiantes',estId),{ almuerzosBalance:increment(dias), modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
     const abId='ab'+Date.now()+'_alm';
-    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Recarga ${dias} almuerzo(s)`, valor, fecha, metodo, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
+    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Recarga ${dias} almuerzo(s)`, valor, fecha, metodo, pagador, pagadorLado, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
     await batch.commit();
     e.almuerzosBalance=(e.almuerzosBalance||0)+dias;
-    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Recarga ${dias} almuerzo(s)`, valor, fecha, metodo});
+    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Recarga ${dias} almuerzo(s)`, valor, fecha, metodo, pagador, pagadorLado});
     document.querySelector('.modal-overlay').remove();
     pintarPagTab();
     alert(`✅ Recarga de ${dias} almuerzo(s) registrada (${fmt(valor)}).`);
@@ -1079,6 +1111,7 @@ window.openModalPagarDeuda=async function(estId){
       <div class="form-group"><label>Días a pagar (máx ${deudaDias})</label><input id="pdDias" type="number" min="1" max="${deudaDias}" value="${deudaDias}" oninput="document.getElementById('pdEquiv').textContent=((parseInt(this.value)||0)*${va}).toLocaleString('es-CO')"/></div>
       <div class="form-group"><label>Fecha</label><input id="pdFecha" type="date" value="${hoyLocal()}"/></div>
       <div class="form-group form-full"><label>Forma de pago</label><select id="pdMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
+      ${pagadorFieldHtml(estId,'pd')}
     </div>
     <div class="hint" style="margin-top:8px">Equivale a $<span id="pdEquiv">${(deudaDias*va).toLocaleString('es-CO')}</span>. Puedes pagar la deuda total o una parte.</div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
@@ -1095,6 +1128,7 @@ window.savePagarDeuda=async function(estId){
   let dias=parseInt(document.getElementById('pdDias').value)||0;
   const fecha=document.getElementById('pdFecha').value||hoyLocal();
   const metodo=document.getElementById('pdMetodo').value||'efectivo';
+  const {pagador,pagadorLado}=leerPagador(estId,'pd');
   if(dias<=0) return alert('Ingresa un número de días mayor a cero.');
   if(dias>deudaDias) return alert(`No puedes pagar más de la deuda actual (${deudaDias} día(s)). Si quieres dejar saldo a favor, usa "Recargar".`);
   const valor=dias*(e.valorAlmuerzo||0);
@@ -1103,10 +1137,10 @@ window.savePagarDeuda=async function(estId){
     const batch=writeBatch(db);
     batch.update(doc(db,'estudiantes',estId),{ almuerzosBalance:increment(dias), modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
     const abId='ab'+Date.now()+'_almd';
-    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Pago deuda ${dias} almuerzo(s)`, valor, fecha, metodo, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
+    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Pago deuda ${dias} almuerzo(s)`, valor, fecha, metodo, pagador, pagadorLado, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
     await batch.commit();
     e.almuerzosBalance=(e.almuerzosBalance||0)+dias;
-    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Pago deuda ${dias} almuerzo(s)`, valor, fecha, metodo});
+    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Pago deuda ${dias} almuerzo(s)`, valor, fecha, metodo, pagador, pagadorLado});
     document.querySelector('.modal-overlay').remove();
     pintarPagTab();
     alert(`✅ Pago de deuda de ${dias} almuerzo(s) registrado (${fmt(valor)}).`);
@@ -1261,6 +1295,7 @@ window.openModalPagoMatricula=function(estId){
       <div class="form-group"><label>Monto del pago (máx ${fmt(falta)})</label><input id="pmMonto" type="number" min="1" max="${falta}" value="${falta}"/></div>
       <div class="form-group"><label>Fecha</label><input id="pmFecha" type="date" value="${hoyLocal()}"/></div>
       <div class="form-group form-full"><label>Forma de pago</label><select id="pmMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
+      ${pagadorFieldHtml(estId,'pm')}
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
@@ -1277,6 +1312,7 @@ window.savePagoMatricula=async function(estId){
   const monto=parseInt(document.getElementById('pmMonto').value)||0;
   const fecha=document.getElementById('pmFecha').value||hoyLocal();
   const metodo=document.getElementById('pmMetodo').value||'efectivo';
+  const {pagador,pagadorLado}=leerPagador(estId,'pm');
   if(monto<=0) return alert('Ingresa un monto mayor a cero.');
   if(monto>falta) return alert(`El monto no puede superar lo que falta (${fmt(falta)}).`);
   const btn=document.getElementById('btnPagoMat'); btn.disabled=true; btn.textContent='Registrando…';
@@ -1284,10 +1320,10 @@ window.savePagoMatricula=async function(estId){
     const batch=writeBatch(db);
     batch.update(doc(db,'cargos',m.id),{ abonado:increment(monto), modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
     const abId='ab'+Date.now()+'_mat';
-    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, cargoId:m.id, tipo:'matricula', etiqueta:`Matrícula ${matYear}`, valor:monto, fecha, metodo, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
+    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, cargoId:m.id, tipo:'matricula', etiqueta:`Matrícula ${matYear}`, valor:monto, fecha, metodo, pagador, pagadorLado, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
     await batch.commit();
     m.abonado=(m.abonado||0)+monto;
-    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, cargoId:m.id, tipo:'matricula', etiqueta:`Matrícula ${matYear}`, valor:monto, fecha, metodo});
+    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, cargoId:m.id, tipo:'matricula', etiqueta:`Matrícula ${matYear}`, valor:monto, fecha, metodo, pagador, pagadorLado});
     document.querySelector('.modal-overlay').remove();
     pintarPagTab();
     alert(`✅ Pago de matrícula registrado (${fmt(monto)}).`);
@@ -1471,6 +1507,33 @@ function renderRepRecaudo(b){
   b.innerHTML=html;
 }
 
+// Desglose por acudiente para estudiantes de pago dividido (pensión, alimentación, matrícula)
+function estadoDivididoHtml(e){
+  if(!e || !e.pagoDividido) return '';
+  const pA=(e.porcentajeA!=null?e.porcentajeA:50), pB=100-pA;
+  const cargos=cargosDe(e.id).filter(c=>c.tipo==='mensualidad'||c.tipo==='alimentacion').sort((a,b)=>(a.tipo===b.tipo?a.periodo-b.periodo:a.tipo.localeCompare(b.tipo)));
+  const mat=matriculaDe(e.id,ANIO); if(mat) cargos.push(mat);
+  const pagadoLado=(cargoId,lado)=>DATA.abonos.filter(a=>a.cargoId===cargoId && a.pagadorLado===lado).reduce((s,a)=>s+(a.valor||0),0);
+  const conceptoLabel=c=>c.tipo==='mensualidad'?MESES[c.periodo]:(c.tipo==='alimentacion'?('Alim. '+MESES[c.periodo]):('Matrícula '+c.anio));
+  const bloque=(lado,nombre,pct)=>{
+    let totShare=0,totPaid=0,totOwe=0;
+    const filas=cargos.map(c=>{
+      const share=Math.round((c.valor||0)*pct/100), paid=pagadoLado(c.id,lado), owe=Math.max(0,share-paid);
+      totShare+=share; totPaid+=paid; totOwe+=owe;
+      const badge=owe<=0?'<span class="badge badge-green">✓ al día</span>':paid>0?'<span class="badge badge-yellow">parcial</span>':'<span class="badge badge-red">debe</span>';
+      return `<tr><td data-label="Concepto">${conceptoLabel(c)}</td><td data-label="Su parte">${fmt(share)}</td><td data-label="Pagó">${fmt(paid)}</td><td data-label="Debe">${owe?fmt(owe):'—'}</td><td data-label="Estado">${badge}</td></tr>`;
+    }).join('');
+    return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:12px">
+      <div style="font-weight:700;color:var(--pink)">${nombre} <span style="font-weight:400;font-size:12px;color:#888">(${pct}%)</span></div>
+      <div style="font-size:13px;margin:4px 0 10px">${totOwe>0?`Debe: <b style="color:var(--red)">${fmt(totOwe)}</b>`:'<b style="color:var(--green)">Al día ✓</b>'} · Su parte total: ${fmt(totShare)} · Ha pagado: ${fmt(totPaid)}</div>
+      <table class="responsive"><thead><tr><th>Concepto</th><th>Su parte</th><th>Pagó</th><th>Debe</th><th>Estado</th></tr></thead><tbody>${filas||'<tr><td colspan="5" class="empty">Sin cargos.</td></tr>'}</tbody></table>
+    </div>`;
+  };
+  return `<div class="card-title" style="margin:18px 0 4px">👥 Pago dividido entre acudientes</div>
+    ${bloque('A', e.acudienteA||'Acudiente 1', pA)}
+    ${bloque('B', e.acudienteB||'Acudiente 2', pB)}`;
+}
+
 // 3) ESTADO DE CUENTA POR ESTUDIANTE
 function renderRepEstado(b){
   const q=(repBuscar||'').trim().toLowerCase();
@@ -1516,6 +1579,7 @@ function renderRepEstado(b){
     <div class="alert ${debeTotal>0?'alert-red':'alert-yellow'}" style="margin-top:16px">
       ${debeTotal>0?`Saldo pendiente total a hoy: <b>${fmt(debeTotal)}</b>`:`✅ El estudiante está al día con lo vencido a hoy.`}
     </div>
+    ${estadoDivididoHtml(e)}
   </div></div>`;
   refocusRepBuscar();
 }
