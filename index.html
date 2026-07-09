@@ -840,6 +840,7 @@ window.openModalAbono=function(estId, tipo){
       <div class="form-group form-full"><label>Mes al que se aplica</label><select id="abMes">${opciones}</select></div>
       <div class="form-group"><label>Monto del abono ($)</label><input id="abMonto" type="number" min="1" placeholder="0"/></div>
       <div class="form-group"><label>Fecha</label><input id="abFecha" type="date" value="${hoy}"/></div>
+      <div class="form-group form-full"><label>Forma de pago</label><select id="abMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
     </div>
     <div class="hint" style="margin-top:8px">Si el monto supera lo que falta en ese mes, el sistema te avisará y podrás aplicar el excedente al mes siguiente.</div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
@@ -856,6 +857,7 @@ window.saveAbono=async function(estId, tipo){
   const cargoId=document.getElementById('abMes').value;
   const monto=parseInt(document.getElementById('abMonto').value)||0;
   const fecha=document.getElementById('abFecha').value||hoyLocal();
+  const metodo=document.getElementById('abMetodo').value||'efectivo';
   if(monto<=0) return alert('Ingresa un monto mayor a cero.');
 
   const cargo=DATA.cargos.find(c=>c.id===cargoId);
@@ -899,9 +901,9 @@ window.saveAbono=async function(estId, tipo){
       const abId='ab'+Date.now()+'_'+ap.cargo.periodo;
       batch.set(doc(db,'abonos',abId),{
         estId, estudiante:e.nombre, cargoId:ap.cargo.id, tipo, etiqueta:ap.cargo.etiqueta,
-        valor:ap.monto, fecha, registradoPor:currentUser.usuario, creadoEn:serverTimestamp()
+        valor:ap.monto, fecha, metodo, registradoPor:currentUser.usuario, creadoEn:serverTimestamp()
       });
-      DATA.abonos.push({id:abId, estId, estudiante:e.nombre, cargoId:ap.cargo.id, tipo, etiqueta:ap.cargo.etiqueta, valor:ap.monto, fecha});
+      DATA.abonos.push({id:abId, estId, estudiante:e.nombre, cargoId:ap.cargo.id, tipo, etiqueta:ap.cargo.etiqueta, valor:ap.monto, fecha, metodo});
     });
     await batch.commit();
     // actualizar memoria local (refleja la suma sin recargar)
@@ -1023,6 +1025,7 @@ window.openModalRecarga=function(estId){
     <div class="form-grid">
       <div class="form-group"><label>Días a recargar</label><input id="rcDias" type="number" min="1" placeholder="0" oninput="document.getElementById('rcEquiv').textContent=((parseInt(this.value)||0)*${va}).toLocaleString('es-CO')"/></div>
       <div class="form-group"><label>Fecha</label><input id="rcFecha" type="date" value="${hoyLocal()}"/></div>
+      <div class="form-group form-full"><label>Forma de pago</label><select id="rcMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
     </div>
     <div class="hint" style="margin-top:8px">Equivale a $<span id="rcEquiv">0</span> (a ${fmt(va)} por día). Suma días al saldo a favor del estudiante.</div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
@@ -1037,6 +1040,7 @@ window.saveRecarga=async function(estId){
   const e=DATA.estudiantes.find(x=>x.id===estId);
   const dias=parseInt(document.getElementById('rcDias').value)||0;
   const fecha=document.getElementById('rcFecha').value||hoyLocal();
+  const metodo=document.getElementById('rcMetodo').value||'efectivo';
   if(dias<=0) return alert('Ingresa un número de días mayor a cero.');
   const valor=dias*(e.valorAlmuerzo||0);
   const btn=document.getElementById('btnRecarga'); btn.disabled=true; btn.textContent='Guardando…';
@@ -1044,10 +1048,10 @@ window.saveRecarga=async function(estId){
     const batch=writeBatch(db);
     batch.update(doc(db,'estudiantes',estId),{ almuerzosBalance:increment(dias), modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
     const abId='ab'+Date.now()+'_alm';
-    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Recarga ${dias} almuerzo(s)`, valor, fecha, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
+    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Recarga ${dias} almuerzo(s)`, valor, fecha, metodo, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
     await batch.commit();
     e.almuerzosBalance=(e.almuerzosBalance||0)+dias;
-    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Recarga ${dias} almuerzo(s)`, valor, fecha});
+    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Recarga ${dias} almuerzo(s)`, valor, fecha, metodo});
     document.querySelector('.modal-overlay').remove();
     pintarPagTab();
     alert(`✅ Recarga de ${dias} almuerzo(s) registrada (${fmt(valor)}).`);
@@ -1071,6 +1075,7 @@ window.openModalPagarDeuda=async function(estId){
     <div class="form-grid">
       <div class="form-group"><label>Días a pagar (máx ${deudaDias})</label><input id="pdDias" type="number" min="1" max="${deudaDias}" value="${deudaDias}" oninput="document.getElementById('pdEquiv').textContent=((parseInt(this.value)||0)*${va}).toLocaleString('es-CO')"/></div>
       <div class="form-group"><label>Fecha</label><input id="pdFecha" type="date" value="${hoyLocal()}"/></div>
+      <div class="form-group form-full"><label>Forma de pago</label><select id="pdMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
     </div>
     <div class="hint" style="margin-top:8px">Equivale a $<span id="pdEquiv">${(deudaDias*va).toLocaleString('es-CO')}</span>. Puedes pagar la deuda total o una parte.</div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
@@ -1086,6 +1091,7 @@ window.savePagarDeuda=async function(estId){
   const deudaDias=Math.max(0,-(e.almuerzosBalance||0));
   let dias=parseInt(document.getElementById('pdDias').value)||0;
   const fecha=document.getElementById('pdFecha').value||hoyLocal();
+  const metodo=document.getElementById('pdMetodo').value||'efectivo';
   if(dias<=0) return alert('Ingresa un número de días mayor a cero.');
   if(dias>deudaDias) return alert(`No puedes pagar más de la deuda actual (${deudaDias} día(s)). Si quieres dejar saldo a favor, usa "Recargar".`);
   const valor=dias*(e.valorAlmuerzo||0);
@@ -1094,10 +1100,10 @@ window.savePagarDeuda=async function(estId){
     const batch=writeBatch(db);
     batch.update(doc(db,'estudiantes',estId),{ almuerzosBalance:increment(dias), modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
     const abId='ab'+Date.now()+'_almd';
-    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Pago deuda ${dias} almuerzo(s)`, valor, fecha, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
+    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Pago deuda ${dias} almuerzo(s)`, valor, fecha, metodo, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
     await batch.commit();
     e.almuerzosBalance=(e.almuerzosBalance||0)+dias;
-    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Pago deuda ${dias} almuerzo(s)`, valor, fecha});
+    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, tipo:'almuerzo', etiqueta:`Pago deuda ${dias} almuerzo(s)`, valor, fecha, metodo});
     document.querySelector('.modal-overlay').remove();
     pintarPagTab();
     alert(`✅ Pago de deuda de ${dias} almuerzo(s) registrado (${fmt(valor)}).`);
@@ -1250,6 +1256,7 @@ window.openModalPagoMatricula=function(estId){
     <div class="form-grid">
       <div class="form-group"><label>Monto del pago (máx ${fmt(falta)})</label><input id="pmMonto" type="number" min="1" max="${falta}" value="${falta}"/></div>
       <div class="form-group"><label>Fecha</label><input id="pmFecha" type="date" value="${hoyLocal()}"/></div>
+      <div class="form-group form-full"><label>Forma de pago</label><select id="pmMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
     </div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
@@ -1265,6 +1272,7 @@ window.savePagoMatricula=async function(estId){
   const falta=Math.max(0,m.valor-(m.abonado||0));
   const monto=parseInt(document.getElementById('pmMonto').value)||0;
   const fecha=document.getElementById('pmFecha').value||hoyLocal();
+  const metodo=document.getElementById('pmMetodo').value||'efectivo';
   if(monto<=0) return alert('Ingresa un monto mayor a cero.');
   if(monto>falta) return alert(`El monto no puede superar lo que falta (${fmt(falta)}).`);
   const btn=document.getElementById('btnPagoMat'); btn.disabled=true; btn.textContent='Registrando…';
@@ -1272,10 +1280,10 @@ window.savePagoMatricula=async function(estId){
     const batch=writeBatch(db);
     batch.update(doc(db,'cargos',m.id),{ abonado:increment(monto), modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
     const abId='ab'+Date.now()+'_mat';
-    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, cargoId:m.id, tipo:'matricula', etiqueta:`Matrícula ${matYear}`, valor:monto, fecha, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
+    batch.set(doc(db,'abonos',abId),{ estId, estudiante:e.nombre, cargoId:m.id, tipo:'matricula', etiqueta:`Matrícula ${matYear}`, valor:monto, fecha, metodo, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
     await batch.commit();
     m.abonado=(m.abonado||0)+monto;
-    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, cargoId:m.id, tipo:'matricula', etiqueta:`Matrícula ${matYear}`, valor:monto, fecha});
+    DATA.abonos.push({id:abId, estId, estudiante:e.nombre, cargoId:m.id, tipo:'matricula', etiqueta:`Matrícula ${matYear}`, valor:monto, fecha, metodo});
     document.querySelector('.modal-overlay').remove();
     pintarPagTab();
     alert(`✅ Pago de matrícula registrado (${fmt(monto)}).`);
@@ -1283,7 +1291,7 @@ window.savePagoMatricula=async function(estId){
 };
 
 // ─── REPORTES ─────────────────────────────────────────────────────────────────
-let repTab='deudas', repEst='';
+let repTab='deudas', repEst='', repGrupo='', repBuscar='', recMes=hoyLocal().slice(0,7);
 
 function renderReportes(c){
   c.innerHTML=`
@@ -1296,6 +1304,9 @@ function renderReportes(c){
   pintarRepTab();
 }
 window.setRepTab=function(t){repTab=t;renderReportes(document.getElementById('mainContent'));};
+window.cambiarRecMes=function(m){ recMes=m||hoyLocal().slice(0,7); pintarRepTab(); };
+window.cambiarRepGrupo=function(g){ repGrupo=g; pintarRepTab(); };
+window.cambiarRepBuscar=function(v){ repBuscar=v; pintarRepTab(); };
 
 function pintarRepTab(){
   const b=document.getElementById('repBody');
@@ -1309,6 +1320,14 @@ function repHeader(titulo){
   return `<div class="report-header"><h2>Fundación Mis Habilidades</h2><div style="font-weight:600;color:var(--blue)">${titulo}</div><div class="meta">Generado el ${f}</div></div>`;
 }
 const btnImprimir=`<button class="btn btn-outline no-print" onclick="window.print()">🖨️ Imprimir / PDF</button>`;
+// Barra de filtro (grado + buscador por nombre) compartida por Deudas y Estado de cuenta
+function filtroReportesHtml(){
+  return `<div class="toolbar no-print">
+    <div><label style="font-size:11px;color:#888;font-weight:600;display:block;margin-bottom:3px">Grado</label><select onchange="cambiarRepGrupo(this.value)" style="padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:13px"><option value="" ${repGrupo===''?'selected':''}>Todos los grados</option>${(DATA.grupos||[]).map(g=>`<option value="${g}" ${g===repGrupo?'selected':''}>${g}</option>`).join('')}</select></div>
+    <div class="search-bar"><label style="font-size:11px;color:#888;font-weight:600;display:block;margin-bottom:3px">Buscar por nombre</label><input id="repBuscarInput" placeholder="🔎 Nombre del estudiante…" value="${repBuscar}" oninput="cambiarRepBuscar(this.value)"/></div>
+  </div>`;
+}
+function refocusRepBuscar(){ if(!repBuscar) return; const i=document.getElementById('repBuscarInput'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } }
 
 // ─── DESCARGA A EXCEL (CSV) ───────────────────────────────────────────────────
 // Genera un archivo que abre en Excel. Usa ; como separador (Excel en español) y BOM para acentos.
@@ -1346,8 +1365,8 @@ window.descargarDeudas=function(){
 
 window.descargarRecaudo=function(){
   const ab=DATA.abonos;
-  const filas=ab.slice().sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')).map(a=>[a.fecha||'',a.estudiante||'',a.tipo||'mensualidad',a.etiqueta||'',a.valor||0,a.registradoPor||'']);
-  descargarCSV(`FMH_recaudo_${fechaArchivo()}.csv`,['Fecha','Estudiante','Concepto','Detalle','Valor','Registro'],filas);
+  const filas=ab.slice().sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')).map(a=>[a.fecha||'',a.estudiante||'',a.tipo||'mensualidad',a.etiqueta||'',a.metodo||'efectivo',a.valor||0,a.registradoPor||'']);
+  descargarCSV(`FMH_recaudo_${fechaArchivo()}.csv`,['Fecha','Estudiante','Concepto','Detalle','FormaPago','Valor','Registro'],filas);
 };
 
 window.descargarEstado=function(){
@@ -1366,7 +1385,8 @@ window.descargarEstado=function(){
 
 // 1) DEUDAS
 function renderRepDeudas(b){
-  const ests=activos(DATA.estudiantes).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const q=(repBuscar||'').trim().toLowerCase();
+  const ests=activos(DATA.estudiantes).filter(e=>(!repGrupo||e.grupo===repGrupo)&&(!q||(e.nombre||'').toLowerCase().includes(q))).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
   const filas=[]; let tM=0,tMat=0,tA=0,tAli=0;
   ests.forEach(e=>{
     const mens=debeHoy(e.id);
@@ -1378,10 +1398,11 @@ function renderRepDeudas(b){
   });
   const granTotal=tM+tMat+tAli+tA;
   let html=`<div class="toolbar no-print"><div style="font-weight:700;color:var(--blue)">Reporte de deudas (a hoy)</div><div style="margin-left:auto">${btnImprimir}${btnDescargar('descargarDeudas()')}</div></div>
+  ${filtroReportesHtml()}
   <div class="card"><div class="card-body">${repHeader('Reporte de deudas')}`;
   if(!filas.length){
-    html+=`<div class="empty">🎉 Ningún estudiante activo tiene deudas pendientes a hoy.</div></div></div>`;
-    b.innerHTML=html; return;
+    html+=`<div class="empty">🎉 Ningún estudiante con deudas ${repGrupo||q?'en este filtro':'a hoy'}.</div></div></div>`;
+    b.innerHTML=html; refocusRepBuscar(); return;
   }
   html+=`<table class="responsive"><thead><tr><th>Estudiante</th><th>Grupo</th><th>Mensualidad</th><th>Matrícula ${ANIO}</th><th>Alim. mensual</th><th>Almuerzos</th><th>Total</th></tr></thead><tbody>
     ${filas.map(f=>`<tr>
@@ -1397,44 +1418,63 @@ function renderRepDeudas(b){
     </tbody></table>
     <div style="margin-top:12px;font-size:13px;color:#555">${filas.length} estudiante(s) con deuda · Total por cobrar: <b style="color:var(--red)">${fmt(granTotal)}</b></div>
     </div></div>`;
-  b.innerHTML=html;
+  b.innerHTML=html; refocusRepBuscar();
 }
 
 // 2) RECAUDO
 function renderRepRecaudo(b){
   const ab=DATA.abonos;
   const tipoDe=a=>a.tipo||'mensualidad';
-  const sum=t=>ab.filter(a=>tipoDe(a)===t).reduce((s,a)=>s+(a.valor||0),0);
-  const mens=sum('mensualidad'), matr=sum('matricula'), alm=sum('almuerzo'), alimM=sum('alimentacion');
+  const metodoDe=a=>a.metodo||'efectivo';
+  const sumT=t=>ab.filter(a=>tipoDe(a)===t).reduce((s,a)=>s+(a.valor||0),0);
+  const sumMet=mm=>ab.filter(a=>metodoDe(a)===mm).reduce((s,a)=>s+(a.valor||0),0);
+  const mens=sumT('mensualidad'), matr=sumT('matricula'), alm=sumT('almuerzo'), alimM=sumT('alimentacion');
+  const efe=sumMet('efectivo'), tra=sumMet('transferencia');
   const gran=mens+matr+alm+alimM;
-  // por mes
+  // por mes (efectivo / transferencia)
   const porMes={};
-  ab.forEach(a=>{const k=(a.fecha||'').slice(0,7)||'sin fecha';porMes[k]=(porMes[k]||0)+(a.valor||0);});
+  ab.forEach(a=>{const k=(a.fecha||'').slice(0,7)||'sin fecha'; const o=porMes[k]||(porMes[k]={efe:0,tra:0,tot:0}); const v=a.valor||0; o.tot+=v; if(metodoDe(a)==='transferencia') o.tra+=v; else o.efe+=v;});
   const meses=Object.keys(porMes).sort().reverse();
+  // por día del mes seleccionado
+  const porDia={};
+  ab.filter(a=>(a.fecha||'').slice(0,7)===recMes).forEach(a=>{const k=a.fecha||'sin fecha'; const o=porDia[k]||(porDia[k]={efe:0,tra:0,tot:0}); const v=a.valor||0; o.tot+=v; if(metodoDe(a)==='transferencia') o.tra+=v; else o.efe+=v;});
+  const dias=Object.keys(porDia).sort().reverse();
+  let nombreMes=recMes; try{ nombreMes=new Date(recMes+'-01T00:00:00').toLocaleDateString('es-CO',{month:'long',year:'numeric'}); }catch(e){}
   let html=`<div class="toolbar no-print"><div style="font-weight:700;color:var(--blue)">Reporte de recaudo</div><div style="margin-left:auto">${btnImprimir}${btnDescargar('descargarRecaudo()')}</div></div>
   <div class="card"><div class="card-body">${repHeader('Reporte de recaudo')}`;
   if(!ab.length){ html+=`<div class="empty">Aún no hay pagos registrados.</div></div></div>`; b.innerHTML=html; return; }
   html+=`<div class="stats-grid">
-      <div class="stat-card green"><div class="num" style="font-size:20px">${fmt(mens)}</div><div class="lbl">Mensualidades</div></div>
-      <div class="stat-card blue"><div class="num" style="font-size:20px">${fmt(matr)}</div><div class="lbl">Matrícula</div></div>
-      <div class="stat-card yellow"><div class="num" style="font-size:20px">${fmt(alm)}</div><div class="lbl">Almuerzos por día</div></div>
-      <div class="stat-card"><div class="num" style="font-size:20px;color:var(--pink)">${fmt(alimM)}</div><div class="lbl">Alimentación mensual</div></div>
+      <div class="stat-card green"><div class="num" style="font-size:20px">${fmt(efe)}</div><div class="lbl">💵 Efectivo</div></div>
+      <div class="stat-card blue"><div class="num" style="font-size:20px">${fmt(tra)}</div><div class="lbl">🏦 Transferencia</div></div>
       <div class="stat-card"><div class="num" style="font-size:20px;color:var(--pink)">${fmt(gran)}</div><div class="lbl">Total recaudado</div></div>
     </div>
-    <div class="card-title" style="margin:8px 0 10px">Recaudo por mes</div>
-    <table class="responsive"><thead><tr><th>Mes</th><th>Recaudado</th></tr></thead><tbody>
-    ${meses.map(m=>`<tr><td data-label="Mes">${m}</td><td data-label="Recaudado"><b>${fmt(porMes[m])}</b></td></tr>`).join('')}
+    <div class="card-title" style="margin:6px 0 8px">Por concepto</div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="num" style="font-size:18px">${fmt(mens)}</div><div class="lbl">Mensualidades</div></div>
+      <div class="stat-card"><div class="num" style="font-size:18px">${fmt(matr)}</div><div class="lbl">Matrícula</div></div>
+      <div class="stat-card"><div class="num" style="font-size:18px">${fmt(alimM)}</div><div class="lbl">Alim. mensual</div></div>
+      <div class="stat-card"><div class="num" style="font-size:18px">${fmt(alm)}</div><div class="lbl">Almuerzos por día</div></div>
+    </div>
+    <div class="card-title" style="margin:14px 0 8px">Recaudo por mes (efectivo / transferencia)</div>
+    <table class="responsive"><thead><tr><th>Mes</th><th>Efectivo</th><th>Transferencia</th><th>Total</th></tr></thead><tbody>
+    ${meses.map(m=>`<tr><td data-label="Mes">${m}</td><td data-label="Efectivo">${fmt(porMes[m].efe)}</td><td data-label="Transferencia">${fmt(porMes[m].tra)}</td><td data-label="Total"><b>${fmt(porMes[m].tot)}</b></td></tr>`).join('')}
+    </tbody></table>
+    <div class="toolbar no-print" style="margin:16px 0 6px"><div class="card-title">Recaudo por día</div><div style="margin-left:auto"><label style="font-size:12px;color:#555;margin-right:6px">Mes</label><input type="month" value="${recMes}" onchange="cambiarRecMes(this.value)" style="padding:6px 10px;border-radius:8px;border:1.5px solid var(--border)"/></div></div>
+    <div style="font-weight:600;color:var(--blue);margin-bottom:6px">Días de ${nombreMes}</div>
+    <table class="responsive"><thead><tr><th>Día</th><th>Efectivo</th><th>Transferencia</th><th>Total</th></tr></thead><tbody>
+    ${dias.length?dias.map(d=>`<tr><td data-label="Día">${d}</td><td data-label="Efectivo">${fmt(porDia[d].efe)}</td><td data-label="Transferencia">${fmt(porDia[d].tra)}</td><td data-label="Total"><b>${fmt(porDia[d].tot)}</b></td></tr>`).join(''):`<tr><td colspan="4" class="empty">Sin recaudo en ${nombreMes}.</td></tr>`}
     </tbody></table></div></div>`;
   b.innerHTML=html;
 }
 
 // 3) ESTADO DE CUENTA POR ESTUDIANTE
 function renderRepEstado(b){
-  const ests=activos(DATA.estudiantes).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
-  const sel=`<div class="rep-card-sel no-print"><label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Estudiante</label>
+  const q=(repBuscar||'').trim().toLowerCase();
+  const ests=activos(DATA.estudiantes).filter(e=>(!repGrupo||e.grupo===repGrupo)&&(!q||(e.nombre||'').toLowerCase().includes(q))).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const sel=filtroReportesHtml()+`<div class="rep-card-sel no-print"><label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Estudiante</label>
     <select onchange="selRepEst(this.value)"><option value="">— Elige un estudiante —</option>
     ${ests.map(e=>`<option value="${e.id}" ${repEst===e.id?'selected':''}>${e.nombre} (${e.grupo})</option>`).join('')}</select></div>`;
-  if(!repEst){ b.innerHTML=sel+`<div class="card"><div class="card-body empty">Elige un estudiante para ver su estado de cuenta.</div></div>`; return; }
+  if(!repEst){ b.innerHTML=sel+`<div class="card"><div class="card-body empty">Elige un estudiante para ver su estado de cuenta.</div></div>`; refocusRepBuscar(); return; }
   const e=DATA.estudiantes.find(x=>x.id===repEst);
   if(!e){ repEst=''; return renderRepEstado(b); }
 
@@ -1473,6 +1513,7 @@ function renderRepEstado(b){
       ${debeTotal>0?`Saldo pendiente total a hoy: <b>${fmt(debeTotal)}</b>`:`✅ El estudiante está al día con lo vencido a hoy.`}
     </div>
   </div></div>`;
+  refocusRepBuscar();
 }
 window.selRepEst=function(id){repEst=id;pintarRepTab();};
 
