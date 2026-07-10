@@ -253,22 +253,25 @@ function hoyLocal(){
 // ─── HELPERS DE CARGOS ───────────────────────────────────────────────────────
 const cargosDe = (estId,anio=ANIO) => DATA.cargos.filter(c=>c.estId===estId && c.anio===anio && c.activo!==false);
 function estadoCargo(c){
+  const neto=Math.max(0,(c.valor||0)-(c.descuento||0)); // valor oficial menos el descuento del mes
   const ab=c.abonado||0;
-  if(ab>=c.valor) return 'pagado';
+  if(ab>=neto) return 'pagado';
   if(ab>0) return 'parcial';
   return 'pendiente';
 }
+// Lo que falta por pagar de un cargo (valor oficial − descuento − abonado). El valor oficial NUNCA se toca.
+function faltaCargo(c){ return Math.max(0,(c.valor||0)-(c.descuento||0)-(c.abonado||0)); }
 // Lo que el estudiante debe HOY: cargos ya vencidos (periodo <= mes actual) y no cubiertos
 function debeHoy(estId,anio=ANIO){
   return cargosDe(estId,anio)
     .filter(c=>c.tipo==='mensualidad' && c.periodo<=MES_ACTUAL)
-    .reduce((a,c)=>a+Math.max(0,(c.valor||0)-(c.abonado||0)),0);
+    .reduce((a,c)=>a+faltaCargo(c),0);
 }
 // Lo que debe HOY de un tipo de cargo mensual (p.ej. 'alimentacion'): meses vencidos no cubiertos
 function debeTipoHoy(estId,tipo,anio=ANIO){
   return cargosDe(estId,anio)
     .filter(c=>c.tipo===tipo && c.periodo<=MES_ACTUAL)
-    .reduce((a,c)=>a+Math.max(0,(c.valor||0)-(c.abonado||0)),0);
+    .reduce((a,c)=>a+faltaCargo(c),0);
 }
 
 // ─── CARGA DE DATOS (lee las colecciones nuevas) ─────────────────────────────
@@ -541,7 +544,7 @@ async function actualizarCargosEstudiante(estId){
   // 1) mensualidad: meses no pagados al valor actual (ene/dic al 50%)
   mens.forEach(c=>{
     const target=(c.periodo===1||c.periodo===12)?Math.round((e.valorMensualidad||0)*0.5):(e.valorMensualidad||0);
-    if((c.abonado||0)===0 && c.valor!==target){
+    if((c.abonado||0)===0 && (c.descuento||0)===0 && c.valor!==target){
       batch.update(doc(db,'cargos',c.id),{valor:target, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
       c.valor=target; cambios++;
     }
@@ -556,7 +559,7 @@ async function actualizarCargosEstudiante(estId){
         const cg={id:aid, estId, anio:ANIO, tipo:'alimentacion', periodo:m, etiqueta:`Alimentación ${MESES[m]} ${ANIO}`, valor:e.valorAlimentacion||0, abonado:0, activo:true};
         batch.set(doc(db,'cargos',aid),{...cg, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
         DATA.cargos.push(cg); cambios++;
-      } else if((existe.abonado||0)===0 && existe.valor!==(e.valorAlimentacion||0)){
+      } else if((existe.abonado||0)===0 && (existe.descuento||0)===0 && existe.valor!==(e.valorAlimentacion||0)){
         batch.update(doc(db,'cargos',aid),{valor:e.valorAlimentacion||0, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
         existe.valor=e.valorAlimentacion||0; cambios++;
       }
@@ -688,12 +691,13 @@ function chipsCargos(cargos, clickFn, estId){
         const est=estadoCargo(cg);
         if(m>MES_ACTUAL && est==='pendiente'){ clase='mes-futuro'; }
         else if(est==='pagado'){ clase='mes-pagado'; }
-        else if(est==='parcial'){ clase='mes-parcial'; detalle='falta '+fmt(cg.valor-cg.abonado); }
+        else if(est==='parcial'){ clase='mes-parcial'; detalle='falta '+fmt(faltaCargo(cg)); }
         else { clase='mes-pendiente'; }
       }
     }
+    const desc=(cg&&(cg.descuento||0)>0);
     const click=(cg&&clickFn)?` style="cursor:pointer" onclick="${clickFn}('${estId}',${m})"`:'';
-    out+=`<div class="mes-chip ${clase}"${click} title="${cg?fmt(cg.valor):'sin cargo'}">${MES_ABBR[m]}${detalle?`<div class="m">${detalle}</div>`:''}</div>`;
+    out+=`<div class="mes-chip ${clase}"${click} title="${cg?('Oficial: '+fmt(cg.valor)+(desc?' · Desc: '+fmt(cg.descuento):'')):'sin cargo'}">${MES_ABBR[m]}${desc?' 🏷️':''}${detalle?`<div class="m">${detalle}</div>`:''}</div>`;
   }
   return out;
 }
@@ -735,7 +739,8 @@ function renderTabMens(body){
         ${can.crearEstudiante()?`<button class="btn btn-pink btn-sm" style="margin-left:10px" onclick="generarCargosEstudiante('${e.id}')">📅 Generar cargos</button>`:''}`;
     }else{
       estadoDer=`${debe>0?`Debe hoy: <b style="color:var(--red)">${fmt(debe)}</b>`:`<b style="color:var(--green)">Al día ✓</b>`}
-        ${can.registrarAbono()?`<button class="btn btn-pink btn-sm" style="margin-left:10px" onclick="openModalAbono('${e.id}')">+ Abono</button>`:''}`;
+        ${can.registrarAbono()?`<button class="btn btn-pink btn-sm" style="margin-left:10px" onclick="openModalAbono('${e.id}')">+ Abono</button>`:''}
+        ${can.registrarAbono()?`<button class="btn btn-outline btn-sm" style="margin-left:6px" onclick="openModalAnticipado('${e.id}')">💳 Anticipado</button>`:''}`;
     }
     // Segunda fila: alimentación mensual (si el estudiante la maneja como valor aparte)
     const cargosAlim=cargosDe(e.id).filter(c=>c.tipo==='alimentacion');
@@ -856,7 +861,7 @@ window.openModalAbono=function(estId, tipo){
   // mes por defecto: el primero no pagado
   const primerPend=cargos.find(c=>estadoCargo(c)!=='pagado');
   const opciones=cargos.map(c=>{
-    const falta=Math.max(0,(c.valor||0)-(c.abonado||0));
+    const falta=faltaCargo(c);
     const est=estadoCargo(c);
     const txt = est==='pagado' ? 'pagado' : (est==='parcial' ? 'falta '+fmt(falta) : 'pendiente '+fmt(falta));
     return `<option value="${c.id}" ${primerPend&&c.id===primerPend.id?'selected':''}>${MESES[c.periodo]} — ${txt}</option>`;
@@ -901,7 +906,7 @@ window.saveAbono=async function(estId, tipo){
   let restante=monto;
   for(const c of desde){
     if(restante<=0) break;
-    const falta=Math.max(0,(c.valor||0)-(c.abonado||0));
+    const falta=faltaCargo(c);
     if(falta<=0) continue; // mes ya pagado, lo salta
     const aplica=Math.min(restante,falta);
     aplicaciones.push({cargo:c, monto:aplica});
@@ -967,6 +972,89 @@ window.editarAlimMes=async function(estId, periodo){
   }catch(err){ alert('No se pudo actualizar: '+err.message); }
 };
 
+// ─── PAGO ANTICIPADO (con descuento temporal, sin tocar la tarifa oficial) ────
+window.openModalAnticipado=function(estId){
+  const e=DATA.estudiantes.find(x=>x.id===estId);
+  const oficialMes=(e.valorMensualidad||0)+(e.alimentacion==='mensual'?(e.valorAlimentacion||0):0);
+  const mesesOpts=MESES.slice(1).map((n,i)=>`<option value="${i+1}" ${i+1===MES_ACTUAL?'selected':''}>${n}</option>`).join('');
+  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">💳 Pago anticipado — ${e.nombre}</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="alert alert-yellow" style="margin-bottom:12px">Tarifa oficial por mes completo: <b>${fmt(oficialMes)}</b>${e.alimentacion==='mensual'?` (mensualidad ${fmt(e.valorMensualidad)} + alimentación ${fmt(e.valorAlimentacion)})`:''}. Enero y diciembre valen menos (mensualidad al 50%). <b>La tarifa oficial NO se toca.</b></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Mes inicial</label><select id="anMesIni">${mesesOpts}</select></div>
+      <div class="form-group"><label>¿Cuántos meses paga?</label><input id="anMeses" type="number" min="1" max="12" value="6"/></div>
+      <div class="form-group"><label>Valor CON descuento por mes ($)</label><input id="anValorMes" type="number" min="1" placeholder="Ej: 620000"/></div>
+      <div class="form-group"><label>Fecha</label><input id="anFecha" type="date" value="${hoyLocal()}"/></div>
+      <div class="form-group form-full"><label>Motivo del descuento</label><input id="anMotivo" placeholder="Ej: Descuento por pago anticipado de 6 meses"/></div>
+      <div class="form-group form-full"><label>Forma de pago</label><select id="anMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
+      ${pagadorFieldHtml(estId,'an')}
+    </div>
+    <div class="hint" style="margin-top:8px">Esos meses quedan pagados con su descuento; al terminar, vuelve a cobrarse el valor oficial automáticamente.</div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+      <button class="btn btn-pink" id="btnAnticipado" onclick="saveAnticipado('${estId}')">Registrar pago anticipado</button>
+    </div>
+  </div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+
+window.saveAnticipado=async function(estId){
+  const e=DATA.estudiantes.find(x=>x.id===estId);
+  const mIni=parseInt(document.getElementById('anMesIni').value)||MES_ACTUAL;
+  const nMeses=parseInt(document.getElementById('anMeses').value)||0;
+  const valorMes=parseInt(document.getElementById('anValorMes').value)||0;
+  const motivo=document.getElementById('anMotivo').value.trim();
+  const fecha=document.getElementById('anFecha').value||hoyLocal();
+  const metodo=document.getElementById('anMetodo').value||'efectivo';
+  const {pagador,pagadorLado}=leerPagador(estId,'an');
+  if(nMeses<=0) return alert('Indica cuántos meses paga por adelantado.');
+  if(valorMes<=0) return alert('Indica el valor con descuento por mes.');
+  const mFin=mIni+nMeses-1;
+  if(mFin>12) return alert(`No caben ${nMeses} meses desde ${MESES[mIni]} en ${ANIO} (pasaría de diciembre). Reduce los meses.`);
+  const plan=[]; let totalOficial=0, totalDesc=0, totalCash=0;
+  for(let m=mIni;m<=mFin;m++){
+    const mensC=DATA.cargos.find(c=>c.estId===estId && c.tipo==='mensualidad' && c.anio===ANIO && c.periodo===m && c.activo!==false);
+    const alimC=DATA.cargos.find(c=>c.estId===estId && c.tipo==='alimentacion' && c.anio===ANIO && c.periodo===m && c.activo!==false);
+    const cargosM=[mensC,alimC].filter(Boolean);
+    if(!cargosM.length) continue;
+    const officialM=cargosM.reduce((s,c)=>s+(c.valor||0),0);
+    if(officialM<=0) continue;
+    const cashM=Math.min(valorMes, officialM); // no puede pagar más que el valor oficial del mes
+    const descM=officialM-cashM;
+    let descAsignado=0;
+    const rep=cargosM.map((c,i)=>{
+      const desc = (i<cargosM.length-1) ? Math.round(descM*(c.valor||0)/officialM) : (descM-descAsignado);
+      descAsignado+=desc;
+      return {cargo:c, desc, cash:(c.valor||0)-desc};
+    });
+    plan.push({mes:m, rep});
+    totalOficial+=officialM; totalCash+=cashM; totalDesc+=descM;
+  }
+  if(!plan.length) return alert('Esos meses no tienen cargos generados para este estudiante. Genera los cargos del año primero.');
+  if(!confirm(`Pago anticipado de ${plan.length} mes(es) (${MESES[mIni]}–${MESES[mFin]}):\n\n• Valor oficial: ${fmt(totalOficial)}\n• Descuento: ${fmt(totalDesc)}\n• Total a pagar: ${fmt(totalCash)}\n\nEstos meses quedarán PAGADOS con su descuento, sin cambiar la tarifa oficial.\n¿Continuar?`)) return;
+  const btn=document.getElementById('btnAnticipado'); btn.disabled=true; btn.textContent='Registrando…';
+  try{
+    const batch=writeBatch(db); let seq=0;
+    plan.forEach(pm=>pm.rep.forEach(r=>{
+      batch.update(doc(db,'cargos',r.cargo.id),{ descuento:(r.cargo.descuento||0)+r.desc, abonado:increment(r.cash), motivoDescuento:motivo, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
+      const abId='ab'+Date.now()+'_ant'+(seq++);
+      const rec={id:abId, estId, estudiante:e.nombre, cargoId:r.cargo.id, tipo:r.cargo.tipo, etiqueta:r.cargo.etiqueta, valorOficial:r.cargo.valor, descuento:r.desc, motivo, mesesCubiertos:plan.length, anticipado:true, valor:r.cash, fecha, metodo, pagador, pagadorLado};
+      batch.set(doc(db,'abonos',abId),{...rec, registradoPor:currentUser.usuario, creadoEn:serverTimestamp()}); delete rec.id2;
+      DATA.abonos.push(rec);
+      r.cargo.descuento=(r.cargo.descuento||0)+r.desc; r.cargo.abonado=(r.cargo.abonado||0)+r.cash;
+    }));
+    const fechaFin=new Date(ANIO, mFin, 0).toISOString().slice(0,10); // último día del mes final
+    const ben={ meses:plan.length, desde:mIni, hasta:mFin, hastaFecha:fechaFin, descuentoTotal:totalDesc, totalPagado:totalCash, motivo, fecha };
+    batch.update(doc(db,'estudiantes',estId),{ beneficioAnticipado:ben, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
+    await batch.commit();
+    e.beneficioAnticipado=ben;
+    document.querySelector('.modal-overlay').remove();
+    pintarPagTab();
+    alert(`✅ Pago anticipado registrado: ${plan.length} mes(es), total ${fmt(totalCash)} (descuento ${fmt(totalDesc)}). La tarifa oficial no cambió.`);
+  }catch(err){ btn.disabled=false; btn.textContent='Registrar pago anticipado'; alert('No se pudo registrar: '+err.message); }
+};
+
 // ─── HISTORIAL DE ABONOS (agrupado por estudiante) ───────────────────────────
 function renderTabHist(body){
   const abonos=[...DATA.abonos];
@@ -998,12 +1086,13 @@ function renderTabHist(body){
         <span style="font-size:13px;color:#555">${lista.length} abono(s) · <b style="color:var(--green)">${fmt(total)}</b></span>
       </div>
       <table class="responsive" style="margin-top:10px">
-        <thead><tr><th>Fecha</th><th>Concepto</th><th>Pagó</th><th>Forma</th><th>Registró</th><th>Valor</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Concepto</th><th>Pagó</th><th>Forma</th><th>Desc.</th><th>Registró</th><th>Valor</th></tr></thead>
         <tbody>${lista.map(a=>`<tr>
           <td data-label="Fecha">${a.fecha||'—'}</td>
-          <td data-label="Concepto">${a.etiqueta||'—'}</td>
+          <td data-label="Concepto"${a.anticipado?` title="Anticipado · oficial ${fmt(a.valorOficial||0)} · ${a.mesesCubiertos||''} mes(es)${a.motivo?' · '+a.motivo:''}"`:''}>${a.etiqueta||'—'}${a.anticipado?' 🏷️':''}</td>
           <td data-label="Pagó">${a.pagador||'—'}</td>
           <td data-label="Forma">${a.metodo?(a.metodo==='transferencia'?'🏦 Transf.':'💵 Efectivo'):'—'}</td>
+          <td data-label="Desc.">${(a.descuento||0)>0?fmt(a.descuento):'—'}</td>
           <td data-label="Registró">${a.registradoPor||'—'}</td>
           <td data-label="Valor"><b>${fmt(a.valor)}</b></td>
         </tr>`).join('')}</tbody>
@@ -1191,7 +1280,7 @@ function renderTabMatricula(body){
       estadoHtml=`<span style="color:#aaa;font-size:13px">Sin matrícula ${matYear}</span>`;
       if(puedeGestionar) acciones=`<button class="btn btn-blue btn-sm" onclick="openModalMatricula('${e.id}')">+ Crear</button>`;
     }else{
-      const est=estadoCargo(m), falta=Math.max(0,m.valor-(m.abonado||0));
+      const est=estadoCargo(m), falta=faltaCargo(m);
       const badge = est==='pagado'?'<span class="badge badge-green">✅ Pagada</span>':est==='parcial'?`<span class="badge badge-yellow">Abonó ${fmt(m.abonado)} · falta ${fmt(falta)}</span>`:'<span class="badge badge-red">Pendiente</span>';
       estadoHtml=`${fmt(m.valor)} &nbsp; ${badge}`;
       if(puedePagar && est!=='pagado') acciones+=`<button class="btn btn-pink btn-sm" onclick="openModalPagoMatricula('${e.id}')">💵 Registrar pago</button>`;
@@ -1286,7 +1375,7 @@ window.openModalPagoMatricula=function(estId){
   const e=DATA.estudiantes.find(x=>x.id===estId);
   const m=matriculaDe(estId,matYear);
   if(!m) return alert('Primero crea la matrícula de este estudiante.');
-  const falta=Math.max(0,m.valor-(m.abonado||0));
+  const falta=faltaCargo(m);
   const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()">
   <div class="modal">
     <div class="modal-header"><span class="modal-title">Pago matrícula ${matYear} — ${e.nombre}</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
@@ -1308,7 +1397,7 @@ window.openModalPagoMatricula=function(estId){
 window.savePagoMatricula=async function(estId){
   const e=DATA.estudiantes.find(x=>x.id===estId);
   const m=matriculaDe(estId,matYear);
-  const falta=Math.max(0,m.valor-(m.abonado||0));
+  const falta=faltaCargo(m);
   const monto=parseInt(document.getElementById('pmMonto').value)||0;
   const fecha=document.getElementById('pmFecha').value||hoyLocal();
   const metodo=document.getElementById('pmMetodo').value||'efectivo';
@@ -1394,7 +1483,7 @@ window.descargarDeudas=function(){
   const filas=[];
   ests.forEach(e=>{
     const mens=debeHoy(e.id);
-    const m=matriculaDe(e.id,ANIO); const matr=m?Math.max(0,m.valor-(m.abonado||0)):0;
+    const m=matriculaDe(e.id,ANIO); const matr=m?faltaCargo(m):0;
     const alimM=debeTipoHoy(e.id,'alimentacion');
     const alm=(e.almuerzosBalance||0)<0?Math.abs(e.almuerzosBalance)*(e.valorAlmuerzo||0):0;
     const total=mens+matr+alimM+alm;
@@ -1419,7 +1508,7 @@ window.descargarEstado=function(){
     filas.push([`Alimentación ${MESES[c.periodo]}`, c.valor, c.abonado||0, Math.max(0,c.valor-(c.abonado||0)), estadoCargo(c)]);
   });
   const m=matriculaDe(e.id,ANIO);
-  if(m) filas.push([`Matrícula ${ANIO}`, m.valor, m.abonado||0, Math.max(0,m.valor-(m.abonado||0)), estadoCargo(m)]);
+  if(m) filas.push([`Matrícula ${ANIO}`, m.valor, m.abonado||0, faltaCargo(m), estadoCargo(m)]);
   descargarCSV(`FMH_estado_${(e.nombre||'').replace(/ /g,'_')}_${fechaArchivo()}.csv`,['Concepto','Valor','Abonado','Falta','Estado'],filas);
 };
 
@@ -1430,7 +1519,7 @@ function renderRepDeudas(b){
   const filas=[]; let tM=0,tMat=0,tA=0,tAli=0;
   ests.forEach(e=>{
     const mens=debeHoy(e.id);
-    const m=matriculaDe(e.id,ANIO); const matr=m?Math.max(0,m.valor-(m.abonado||0)):0;
+    const m=matriculaDe(e.id,ANIO); const matr=m?faltaCargo(m):0;
     const alimM=debeTipoHoy(e.id,'alimentacion');
     const alm=(e.almuerzosBalance||0)<0?Math.abs(e.almuerzosBalance)*(e.valorAlmuerzo||0):0;
     const total=mens+matr+alimM+alm;
@@ -1507,6 +1596,26 @@ function renderRepRecaudo(b){
   b.innerHTML=html;
 }
 
+// Ficha: tarifa oficial (nunca cambia) + beneficios temporales activos (pago anticipado)
+function fichaTarifaHtml(e){
+  const total=(e.valorMensualidad||0)+(e.alimentacion==='mensual'?(e.valorAlimentacion||0):0);
+  let ben='';
+  const b=e.beneficioAnticipado;
+  if(b && b.hasta>=MES_ACTUAL){
+    const fin=b.hastaFecha?new Date(b.hastaFecha+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'}):MESES[b.hasta];
+    ben=`<div style="margin-top:8px;padding:10px 12px;background:#FFFDE7;border:1px solid #fff0b3;border-radius:10px;font-size:13px">
+      <b style="color:#8d6e00">🏷️ Beneficio temporal activo</b><br>
+      Pago anticipado de <b>${b.meses}</b> mes(es) · descuento vigente <b>${MESES[b.desde]}–${MESES[b.hasta]}</b> · descuento total <b>${fmt(b.descuentoTotal)}</b><br>
+      ${b.motivo?`Motivo: ${b.motivo}<br>`:''}Finaliza automáticamente el <b>${fin}</b>.
+    </div>`;
+  }
+  return `<div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:#fafafa">
+    <div style="font-weight:700;color:var(--blue)">💠 Tarifa oficial (no cambia)</div>
+    <div style="font-size:13px;margin-top:4px">Mensualidad: <b>${fmt(e.valorMensualidad)}</b>${e.alimentacion==='mensual'?` · Alimentación: <b>${fmt(e.valorAlimentacion)}</b> · Total: <b>${fmt(total)}</b>`:''}</div>
+    ${ben}
+  </div>`;
+}
+
 // Desglose por acudiente para estudiantes de pago dividido (pensión, alimentación, matrícula)
 function estadoDivididoHtml(e){
   if(!e || !e.pagoDividido) return '';
@@ -1548,33 +1657,34 @@ function renderRepEstado(b){
   // mensualidades
   const meses=cargosDe(e.id).filter(c=>c.tipo==='mensualidad').sort((a,b)=>a.periodo-b.periodo);
   const filasMes=meses.map(c=>{
-    const falta=Math.max(0,c.valor-(c.abonado||0)); const est=estadoCargo(c);
+    const falta=faltaCargo(c); const est=estadoCargo(c); const desc=c.descuento||0;
     const badge=est==='pagado'?'<span class="badge badge-green">Pagado</span>':est==='parcial'?'<span class="badge badge-yellow">Parcial</span>':'<span class="badge badge-red">Pendiente</span>';
-    return `<tr><td data-label="Mes">${MESES[c.periodo]}</td><td data-label="Valor">${fmt(c.valor)}</td><td data-label="Abonado">${fmt(c.abonado||0)}</td><td data-label="Falta">${falta?fmt(falta):'—'}</td><td data-label="Estado">${badge}</td></tr>`;
+    return `<tr><td data-label="Mes">${MESES[c.periodo]}</td><td data-label="Oficial">${fmt(c.valor)}</td><td data-label="Descuento">${desc?fmt(desc):'—'}</td><td data-label="Pagado">${fmt(c.abonado||0)}</td><td data-label="Falta">${falta?fmt(falta):'—'}</td><td data-label="Estado">${badge}</td></tr>`;
   }).join('');
-  const totMesVal=meses.reduce((s,c)=>s+c.valor,0), totMesAb=meses.reduce((s,c)=>s+(c.abonado||0),0);
+  const totMesVal=meses.reduce((s,c)=>s+c.valor,0), totMesAb=meses.reduce((s,c)=>s+(c.abonado||0),0), totMesDesc=meses.reduce((s,c)=>s+(c.descuento||0),0), totMesFalta=meses.reduce((s,c)=>s+faltaCargo(c),0);
   // matrícula
   const m=matriculaDe(e.id,ANIO);
-  const matrTxt=m?`Matrícula ${ANIO}: ${fmt(m.valor)} · abonado ${fmt(m.abonado||0)} · ${estadoCargo(m)==='pagado'?'pagada':'falta '+fmt(Math.max(0,m.valor-(m.abonado||0)))}`:`Sin matrícula ${ANIO} registrada`;
+  const matrTxt=m?`Matrícula ${ANIO}: ${fmt(m.valor)} · abonado ${fmt(m.abonado||0)} · ${estadoCargo(m)==='pagado'?'pagada':'falta '+fmt(faltaCargo(m))}`:`Sin matrícula ${ANIO} registrada`;
   // almuerzos
   const bal=e.almuerzosBalance||0;
   const almTxt=e.alimentacion==='mensual'?'Alimentación mensual (ver detalle abajo)':e.alimentacion!=='dia'?(e.alimentacion==='incluida'?'Almuerzo incluido en la mensualidad':'No toma almuerzo'):(bal>0?`Saldo a favor: ${bal} día(s)`:bal<0?`Debe: ${Math.abs(bal)} día(s) (${fmt(Math.abs(bal)*(e.valorAlmuerzo||0))})`:'Al día');
   // alimentación mensual (cargos aparte)
   const mesesAlim=cargosDe(e.id).filter(c=>c.tipo==='alimentacion').sort((a,b)=>a.periodo-b.periodo);
-  const debeTotal=debeHoy(e.id)+debeTipoHoy(e.id,'alimentacion')+(m?Math.max(0,m.valor-(m.abonado||0)):0)+(bal<0?Math.abs(bal)*(e.valorAlmuerzo||0):0);
+  const debeTotal=debeHoy(e.id)+debeTipoHoy(e.id,'alimentacion')+(m?faltaCargo(m):0)+(bal<0?Math.abs(bal)*(e.valorAlmuerzo||0):0);
 
   b.innerHTML=sel+`<div class="toolbar no-print"><div></div><div style="margin-left:auto">${btnImprimir}${btnDescargar('descargarEstado()')}</div></div>
   <div class="card"><div class="card-body">${repHeader('Estado de cuenta')}
     <div style="margin-bottom:14px"><b style="font-size:15px;color:var(--blue)">${e.nombre}</b> &nbsp;<span class="badge badge-pink">${e.grupo}</span></div>
+    ${fichaTarifaHtml(e)}
     <div style="font-size:13px;margin-bottom:6px"><b>Matrícula:</b> ${matrTxt}</div>
     <div style="font-size:13px;margin-bottom:14px"><b>Almuerzos:</b> ${almTxt}</div>
     <div class="card-title" style="margin-bottom:8px">Mensualidades ${ANIO}</div>
-    ${meses.length?`<table class="responsive"><thead><tr><th>Mes</th><th>Valor</th><th>Abonado</th><th>Falta</th><th>Estado</th></tr></thead><tbody>${filasMes}
-      <tr class="rep-total-row"><td data-label="">TOTALES</td><td data-label="Valor">${fmt(totMesVal)}</td><td data-label="Abonado">${fmt(totMesAb)}</td><td data-label="Falta">${fmt(Math.max(0,totMesVal-totMesAb))}</td><td></td></tr>
+    ${meses.length?`<table class="responsive"><thead><tr><th>Mes</th><th>Oficial</th><th>Descuento</th><th>Pagado</th><th>Falta</th><th>Estado</th></tr></thead><tbody>${filasMes}
+      <tr class="rep-total-row"><td data-label="">TOTALES</td><td data-label="Oficial">${fmt(totMesVal)}</td><td data-label="Descuento">${fmt(totMesDesc)}</td><td data-label="Pagado">${fmt(totMesAb)}</td><td data-label="Falta">${fmt(totMesFalta)}</td><td></td></tr>
       </tbody></table>`:'<div class="empty">No se han generado cargos mensuales.</div>'}
     ${mesesAlim.length?`<div class="card-title" style="margin:16px 0 8px">Alimentación mensual ${ANIO}</div>
-    <table class="responsive"><thead><tr><th>Mes</th><th>Valor</th><th>Abonado</th><th>Falta</th><th>Estado</th></tr></thead><tbody>
-    ${mesesAlim.map(c=>{const falta=Math.max(0,c.valor-(c.abonado||0));const est=estadoCargo(c);const badge=est==='pagado'?'<span class="badge badge-green">Pagado</span>':est==='parcial'?'<span class="badge badge-yellow">Parcial</span>':'<span class="badge badge-red">Pendiente</span>';return `<tr><td data-label="Mes">${MESES[c.periodo]}</td><td data-label="Valor">${fmt(c.valor)}</td><td data-label="Abonado">${fmt(c.abonado||0)}</td><td data-label="Falta">${falta?fmt(falta):'—'}</td><td data-label="Estado">${badge}</td></tr>`;}).join('')}
+    <table class="responsive"><thead><tr><th>Mes</th><th>Oficial</th><th>Descuento</th><th>Pagado</th><th>Falta</th><th>Estado</th></tr></thead><tbody>
+    ${mesesAlim.map(c=>{const falta=faltaCargo(c);const desc=c.descuento||0;const est=estadoCargo(c);const badge=est==='pagado'?'<span class="badge badge-green">Pagado</span>':est==='parcial'?'<span class="badge badge-yellow">Parcial</span>':'<span class="badge badge-red">Pendiente</span>';return `<tr><td data-label="Mes">${MESES[c.periodo]}</td><td data-label="Oficial">${fmt(c.valor)}</td><td data-label="Descuento">${desc?fmt(desc):'—'}</td><td data-label="Pagado">${fmt(c.abonado||0)}</td><td data-label="Falta">${falta?fmt(falta):'—'}</td><td data-label="Estado">${badge}</td></tr>`;}).join('')}
     </tbody></table>`:''}
     <div class="alert ${debeTotal>0?'alert-red':'alert-yellow'}" style="margin-top:16px">
       ${debeTotal>0?`Saldo pendiente total a hoy: <b>${fmt(debeTotal)}</b>`:`✅ El estudiante está al día con lo vencido a hoy.`}
