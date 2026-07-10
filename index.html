@@ -662,8 +662,11 @@ function renderPagos(c){
 }
 window.setPagTab=function(t){pagTab=t;renderPagos(document.getElementById('mainContent'));};
 function filtrarPagoCards(sel, q){ q=(q||'').toLowerCase().trim(); document.querySelectorAll(sel).forEach(c=>{ c.style.display=(!q||(c.dataset.nombre||'').includes(q))?'':'none'; }); }
-window.filtrarMens=v=>filtrarPagoCards('.mens-card', v);
 window.filtrarMatr=v=>filtrarPagoCards('.matr-card', v);
+let mensFG='', mensFN='';
+function aplicarFiltroMens(){ document.querySelectorAll('.mens-card').forEach(c=>{ const okG=!mensFG||c.dataset.grupo===mensFG; const okN=!mensFN||(c.dataset.nombre||'').includes(mensFN); c.style.display=(okG&&okN)?'':'none'; }); }
+window.filtrarMens=v=>{ mensFN=(v||'').toLowerCase().trim(); aplicarFiltroMens(); };
+window.filtrarMensGrupo=g=>{ mensFG=g||''; aplicarFiltroMens(); };
 
 function pintarPagTab(){
   const body=document.getElementById('pagBody');
@@ -703,6 +706,7 @@ function chipsCargos(cargos, clickFn, estId){
 }
 
 function renderTabMens(body){
+  mensFG=''; mensFN='';
   const ests=activos(DATA.estudiantes).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
   const hayCargos = DATA.cargos.some(c=>c.tipo==='mensualidad' && c.anio===ANIO);
   const puedeGenerar=can.crearEstudiante();
@@ -710,7 +714,10 @@ function renderTabMens(body){
   let head=`<div class="toolbar">
       <div style="font-weight:700;color:var(--blue)">Mensualidades ${ANIO}</div>
       ${puedeGenerar?`<button class="btn ${hayCargos?'btn-outline':'btn-pink'}" onclick="generarCargosAnio()">📅 ${hayCargos?'Revisar / completar cargos del año':'Generar cargos del año '+ANIO}</button>`:''}
-    </div>${hayCargos?`<div class="search-bar" style="margin-bottom:14px"><input placeholder="🔎 Buscar estudiante…" oninput="filtrarMens(this.value)"/></div>`:''}`;
+    </div>${hayCargos?`<div class="toolbar" style="margin-bottom:14px">
+      <div><label style="font-size:11px;color:#888;font-weight:600;display:block;margin-bottom:3px">Grado</label><select onchange="filtrarMensGrupo(this.value)" style="padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:13px"><option value="">Todos los grados</option>${(DATA.grupos||[]).map(g=>`<option value="${g}">${g}</option>`).join('')}</select></div>
+      <div class="search-bar"><input placeholder="🔎 Buscar estudiante…" oninput="filtrarMens(this.value)"/></div>
+    </div>`:''}`;
 
   if(!hayCargos){
     body.innerHTML=head+`<div class="card"><div class="card-body construccion">
@@ -756,7 +763,7 @@ function renderTabMens(body){
         ${can.registrarAbono()?`<div class="hint" style="margin-top:5px">Toca un mes para ajustar su valor (descuento por inasistencia).</div>`:''}
       </div>`;
     }
-    return `<div class="est-pago-card mens-card" data-nombre="${(e.nombre||'').toLowerCase()}">
+    return `<div class="est-pago-card mens-card" data-nombre="${(e.nombre||'').toLowerCase()}" data-grupo="${e.grupo||''}">
       <div class="est-pago-top">
         <span class="est-pago-nombre">${e.nombre} <span class="badge badge-pink" style="font-weight:600">${e.grupo}</span></span>
         <span class="est-pago-debe">${estadoDer}</span>
