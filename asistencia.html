@@ -55,6 +55,14 @@ body{background:#f5f7f7;color:#333}
 .cumple-banner{background:linear-gradient(135deg,#FFF3E0,#FCE4EC);border:1px solid #ffd6a5;border-radius:14px;padding:12px 16px;margin-bottom:14px}
 .cumple-tit{font-weight:700;color:#E65100;font-size:14px;margin-bottom:6px}
 .cumple-lista{font-size:13px;color:#5d4037;line-height:1.7}
+.nov-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:1rem}
+.nov-box{background:#fff;border-radius:16px;padding:20px;width:100%;max-width:420px}
+.nov-title{font-weight:700;color:var(--blue);font-size:16px}
+.nov-box textarea{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box}
+.nov-box textarea:focus{border-color:var(--teal)}
+.nov-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+.nov-btn-cancel{background:#fff;border:1.5px solid var(--border);color:#666;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer}
+.nov-btn-save{background:var(--teal);border:none;color:#fff;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer}
 .vista-nav{display:flex;gap:6px}
 .vista-btn{padding:8px 16px;border-radius:10px;border:1.5px solid var(--border);background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:#888}
 .vista-btn.active{background:var(--teal);color:#fff;border-color:var(--teal)}
@@ -467,6 +475,7 @@ function renderReporte(){
   const almSet=new Set(regDelDia.filter(r=>r.almorzo).map(r=>r.estId));
   const fechaTxt=new Date(fechaSel+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
+  const regMap={}; regDelDia.forEach(r=>{regMap[r.estId]=r;});
   let totalAlm=0, totalAsist=0, totalEst=0;
   const bloques=DATA.grupos.filter(g=>!filtroGrupo||g===filtroGrupo).map(g=>{
     const enG=ests.filter(e=>e.grupo===g && matchN(e)).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
@@ -477,11 +486,13 @@ function renderReporte(){
     return `<div class="repgrupo">
       <h3>${g}</h3>
       <div class="sub">${enG.length} estudiantes · Asistieron ${aG} · Almorzaron ${lG}</div>
-      <table class="rtab"><thead><tr><th>Estudiante</th><th>Asistió</th><th>Almorzó</th></tr></thead><tbody>
+      <table class="rtab"><thead><tr><th>Estudiante</th><th>Asistió</th><th>Hora</th><th>Almorzó</th><th>Novedad</th></tr></thead><tbody>
         ${enG.map(e=>`<tr>
           <td>${e.nombre}</td>
           <td class="ck ${asistSet.has(e.id)?'si':'no'}">${asistSet.has(e.id)?'✓':'—'}</td>
+          <td style="font-size:12px;color:#00695C">${(regMap[e.id]&&regMap[e.id].horaAsistio)?regMap[e.id].horaAsistio:'—'}</td>
           <td class="ck ${almSet.has(e.id)?'si':'no'}">${e.alimentacion==='no'?'<span style="color:#bbb;font-weight:400">no aplica</span>':(almSet.has(e.id)?'✓':'—')}</td>
+          <td style="font-size:12px;color:#8d6e00">${(regMap[e.id]&&regMap[e.id].novedad)?regMap[e.id].novedad:'—'}</td>
         </tr>`).join('')}
       </tbody></table>
     </div>`;
@@ -558,11 +569,14 @@ function renderRegistro(){
     else if(e.alimentacion==='mensual'){ almTag='<span class="badge badge-green">Mensual</span>'; }
     else { almTag='<span class="badge badge-yellow">No almuerza</span>'; }
     const dis = soloLectura?'disabled':'';
+    const hora = (!esProfe() && asistio && r && r.horaAsistio) ? ` · <span style="color:#00695C;font-weight:600">🕐 ${r.horaAsistio}</span>` : '';
+    const nov = (r && r.novedad) ? `<div style="font-size:12px;color:#8d6e00;margin-top:3px">📝 ${r.novedad}</div>` : '';
     return `<div class="est-row">
-      <div class="est-info"><div class="est-nombre">${e.nombre}</div><div class="est-meta">${e.modalidad==='TC'?'Tiempo completo':'Medio tiempo'} · ${almTag}</div></div>
+      <div class="est-info"><div class="est-nombre">${e.nombre}</div><div class="est-meta">${e.modalidad==='TC'?'Tiempo completo':'Medio tiempo'} · ${almTag}${hora}</div>${nov}</div>
       <div class="est-acciones">
         <div class="toggle ${asistio?'on-asist':''} ${dis}" ${dis?'':`onclick="toggleAsistio('${e.id}')"`}>${asistio?'✅ Asistió':'Asistió'}</div>
         ${comeAlm?`<div class="toggle ${almorzo?'on-alm':''} ${dis}" ${dis?'':`onclick="toggleAlmorzo('${e.id}')"`}>${almorzo?'🍽️ Almorzó':'Almorzó'}</div>`:`<div class="toggle disabled">—</div>`}
+        <div class="toggle ${dis}" ${dis?'':`onclick="editarNovedad('${e.id}')"`} style="min-width:auto;padding:9px 12px" title="Agregar/editar novedad">📝${(r&&r.novedad)?' ✔':''}</div>
       </div>
     </div>`;
   }).join('');
@@ -574,13 +588,47 @@ window.toggleAsistio=async function(estId){
   const e=DATA.estudiantes.find(x=>x.id===estId);
   const r=regOf(estId);
   const nuevo=!(r?.asistio);
+  const hora = nuevo ? new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:true}) : '';
   try{
     const rid=regId(fechaSel,estId);
     const base = r?{}:{estId, grupo:e.grupo, fecha:fechaSel, almorzo:false, creadoEn:serverTimestamp()};
-    await setDoc(doc(db,'registros',rid),{...base, asistio:nuevo, registradoPor:currentUser.usuario, modificadoEn:serverTimestamp()},{merge:true});
-    if(r) r.asistio=nuevo; else DATA.registros.push({id:rid, estId, grupo:e.grupo, fecha:fechaSel, asistio:nuevo, almorzo:false});
+    await setDoc(doc(db,'registros',rid),{...base, asistio:nuevo, horaAsistio:hora, registradoPor:currentUser.usuario, modificadoEn:serverTimestamp()},{merge:true});
+    if(r){ r.asistio=nuevo; r.horaAsistio=hora; } else DATA.registros.push({id:rid, estId, grupo:e.grupo, fecha:fechaSel, asistio:nuevo, almorzo:false, horaAsistio:hora});
     renderRegistro();
   }catch(err){ alert('No se pudo registrar: '+err.message); }
+};
+
+// Novedad por estudiante del día (la escribe la profe; se guarda en el registro)
+window.editarNovedad=function(estId){
+  const e=DATA.estudiantes.find(x=>x.id===estId);
+  const r=regOf(estId);
+  const ov=document.createElement('div');
+  ov.className='nov-overlay';
+  ov.innerHTML=`<div class="nov-box">
+    <div class="nov-title">📝 Novedad — ${e.nombre}</div>
+    <div style="font-size:12px;color:#888;margin:2px 0 8px">${fechaSel}</div>
+    <textarea id="novTxt" rows="4" placeholder="Escribe la novedad del día…"></textarea>
+    <div class="nov-actions">
+      <button class="nov-btn-cancel" id="novCancel">Cancelar</button>
+      <button class="nov-btn-save" id="novSave">Guardar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const ta=document.getElementById('novTxt'); ta.value=(r&&r.novedad)?r.novedad:''; ta.focus();
+  const close=()=>ov.remove();
+  ov.addEventListener('click',ev=>{ if(ev.target===ov) close(); });
+  document.getElementById('novCancel').onclick=close;
+  document.getElementById('novSave').onclick=async function(){
+    const novedad=(ta.value||'').trim();
+    const btn=this; btn.disabled=true; btn.textContent='Guardando…';
+    try{
+      const rid=regId(fechaSel,estId);
+      const base = r?{}:{estId, grupo:e.grupo, fecha:fechaSel, asistio:false, almorzo:false, creadoEn:serverTimestamp()};
+      await setDoc(doc(db,'registros',rid),{...base, novedad, registradoPor:currentUser.usuario, modificadoEn:serverTimestamp()},{merge:true});
+      if(r){ r.novedad=novedad; } else DATA.registros.push({id:rid, estId, grupo:e.grupo, fecha:fechaSel, asistio:false, almorzo:false, novedad});
+      close(); renderRegistro();
+    }catch(err){ btn.disabled=false; btn.textContent='Guardar'; alert('No se pudo guardar: '+err.message); }
+  };
 };
 
 // marca/desmarca almuerzo (descuenta/recupera saldo SOLO si paga por día) — TRANSACCIÓN
