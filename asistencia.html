@@ -136,7 +136,7 @@ body{background:#f5f7f7;color:#333}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import { getFirestore, collection, getDocs, doc, getDoc, setDoc, updateDoc, serverTimestamp, writeBatch, increment, query, where, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
 // ─── STAGING ──────────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -185,21 +185,13 @@ async function cargarDatos(){
 }
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
-async function doLogin(){
-  const email=document.getElementById('loginUser').value.trim().toLowerCase();
-  const pass=document.getElementById('loginPass').value.trim();
+let loginManual=false, cerroSesion=false;
+
+// Entra a la app con un usuario ya autenticado (sirve para el login manual y para
+// reanudar la sesión sola cuando el navegador recarga la página).
+async function entrarConUsuario(user, manual){
+  const correo=(user.email||'').toLowerCase();
   const errEl=document.getElementById('loginErr');
-  errEl.style.display='none';
-  if(!email||!pass){ errEl.textContent='Escribe tu correo y contraseña'; errEl.style.display='block'; return; }
-  const btn=document.querySelector('.btn-login'); btn.disabled=true; const btnTxt=btn.textContent; btn.textContent='Ingresando…';
-  let cred;
-  try{
-    cred = await signInWithEmailAndPassword(auth, email, pass);
-  }catch(err){
-    btn.disabled=false; btn.textContent=btnTxt;
-    errEl.textContent='Correo o contraseña incorrectos'; errEl.style.display='block';
-    return;
-  }
   document.getElementById('mainContent').innerHTML='<div class="loading">Cargando…</div>';
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
@@ -208,11 +200,9 @@ async function doLogin(){
   }catch(err){
     document.getElementById('app').classList.add('hidden');
     document.getElementById('loginScreen').classList.remove('hidden');
-    btn.disabled=false; btn.textContent=btnTxt;
-    return alert('No se pudieron cargar los datos: '+err.message);
+    if(manual) alert('No se pudieron cargar los datos: '+err.message);
+    return false;
   }
-  // resolver rol: primero el personal (STAFF por correo), luego profesoras (por correo)
-  const correo=(cred.user.email||'').toLowerCase();
   let found=null;
   const staff=STAFF[correo];
   if(staff){ found={usuario:correo, rol:staff.rol, nombre:staff.nombre}; }
@@ -221,14 +211,12 @@ async function doLogin(){
     if(pf) found={usuario:correo, rol:'profe', nombre:pf.nombre, grupos:pf.grupos||[]};
   }
   if(!found){
-    await signOut(auth);
+    try{ await signOut(auth); }catch(e){}
     document.getElementById('app').classList.add('hidden');
     document.getElementById('loginScreen').classList.remove('hidden');
-    btn.disabled=false; btn.textContent=btnTxt;
-    errEl.textContent='Esta cuenta no tiene acceso. Pide al Presidente que te registre.'; errEl.style.display='block';
-    return;
+    if(manual){ errEl.textContent='Esta cuenta no tiene acceso. Pide al Presidente que te registre.'; errEl.style.display='block'; }
+    return false;
   }
-  btn.disabled=false; btn.textContent=btnTxt;
   currentUser=found;
   gruposVisibles = found.rol==='profe' ? (found.grupos||[]) : DATA.grupos;
   grupoSel = gruposVisibles[0]||'';
@@ -237,9 +225,36 @@ async function doLogin(){
   document.getElementById('userRol').textContent={admin:'Administrador',coord:'Coordinadora',profe:'Profesora'}[found.rol];
   renderControles();
   setVista('registro');
+  return true;
+}
+
+async function doLogin(){
+  const email=document.getElementById('loginUser').value.trim().toLowerCase();
+  const pass=document.getElementById('loginPass').value.trim();
+  const errEl=document.getElementById('loginErr');
+  errEl.style.display='none';
+  if(!email||!pass){ errEl.textContent='Escribe tu correo y contraseña'; errEl.style.display='block'; return; }
+  const btn=document.querySelector('.btn-login'); btn.disabled=true; btn.textContent='Ingresando…';
+  cerroSesion=false; loginManual=true;
+  try{
+    await signInWithEmailAndPassword(auth, email, pass);
+    // La entrada la maneja onAuthStateChanged (evita entrar dos veces).
+  }catch(err){
+    loginManual=false; btn.disabled=false; btn.textContent='Ingresar';
+    errEl.textContent='Correo o contraseña incorrectos'; errEl.style.display='block';
+  }
 }
 window.doLogin=doLogin;
-window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} try{ await signOut(auth); }catch(err){} currentUser=null;document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
+
+// Punto único de entrada: reanuda la sesión al recargar y entra tras el login manual.
+onAuthStateChanged(auth, async (user)=>{
+  if(user && !currentUser && !cerroSesion){
+    const manual=loginManual; loginManual=false;
+    await entrarConUsuario(user, manual);
+  }
+  const b=document.querySelector('.btn-login'); if(b){ b.disabled=false; b.textContent='Ingresar'; }
+});
+window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
 window.cambiarGrupo=function(g){grupoSel=g;renderRegistro();};
 window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else if(vista==='edades') renderEdades(); else loadRegistrosDia(fechaSel);};
 window.cambiarFiltroGrupo=function(g){ filtroGrupo=g; if(vista==='reporte') renderReporte(); else if(vista==='edades') renderEdades(); };
