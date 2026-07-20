@@ -256,9 +256,9 @@ onAuthStateChanged(auth, async (user)=>{
 });
 window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
 window.cambiarGrupo=function(g){grupoSel=g;renderRegistro();};
-window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else if(vista==='edades') renderEdades(); else loadRegistrosDia(fechaSel);};
-window.cambiarFiltroGrupo=function(g){ filtroGrupo=g; if(vista==='reporte') renderReporte(); else if(vista==='edades') renderEdades(); };
-window.cambiarBuscar=function(v){ buscarNombre=v; if(vista==='reporte') renderReporte(); else if(vista==='edades') renderEdades(); else renderRegistro(); };
+window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else if(vista==='inasistencias') iniciarInasistencias(); else if(vista==='edades') renderEdades(); else loadRegistrosDia(fechaSel);};
+window.cambiarFiltroGrupo=function(g){ filtroGrupo=g; if(vista==='reporte') renderReporte(); else if(vista==='inasistencias') renderInasistencias(); else if(vista==='edades') renderEdades(); };
+window.cambiarBuscar=function(v){ buscarNombre=v; if(vista==='reporte') renderReporte(); else if(vista==='inasistencias') renderInasistencias(); else if(vista==='edades') renderEdades(); else renderRegistro(); };
 window.cambiarMes=function(m){ mesSel=m||hoyLocal().slice(0,7); iniciarMensual(); };
 
 // Trae del servidor los registros del día indicado (datos frescos antes de corregir)
@@ -283,13 +283,14 @@ function renderControles(){
       <button class="vista-btn" id="vbReg" onclick="setVista('registro')">📋 Registro</button>
       <button class="vista-btn" id="vbRes" onclick="setVista('resumen')">📊 Resumen</button>
       <button class="vista-btn" id="vbRep" onclick="setVista('reporte')">🖨️ Reporte diario</button>
+      <button class="vista-btn" id="vbIna" onclick="setVista('inasistencias')">🚫 Inasistencias</button>
       <button class="vista-btn" id="vbMes" onclick="setVista('mensual')">📅 Mensual</button>
       <button class="vista-btn" id="vbEda" onclick="setVista('edades')">👶 Edades</button>
     </div>` : '';
   let grupoHtml='';
   if(vista==='registro'){
     grupoHtml=`<div><label>Grupo</label><select id="grupoSel" onchange="cambiarGrupo(this.value)">${gruposVisibles.map(g=>`<option value="${g}" ${g===grupoSel?'selected':''}>${g}</option>`).join('')||'<option value="">Sin grupos</option>'}</select></div>`;
-  }else if(vista==='reporte'||vista==='edades'){
+  }else if(vista==='reporte'||vista==='edades'||vista==='inasistencias'){
     grupoHtml=`<div><label>Grupo</label><select id="filtroGrupo" onchange="cambiarFiltroGrupo(this.value)"><option value="" ${filtroGrupo===''?'selected':''}>Todos los grupos</option>${gruposVisibles.map(g=>`<option value="${g}" ${g===filtroGrupo?'selected':''}>${g}</option>`).join('')}</select></div>`;
   }
   let fechaHtml='';
@@ -303,18 +304,96 @@ function renderControles(){
       : `<div><label>Fecha</label><input type="date" id="fechaSel" value="${fechaSel}" max="${hoyLocal()}" onchange="cambiarFecha(this.value)"/></div>`;
   }
   let buscarHtml='';
-  if(vista==='registro'||vista==='reporte'||vista==='edades'){
+  if(vista==='registro'||vista==='reporte'||vista==='edades'||vista==='inasistencias'){
     buscarHtml=`<div style="flex:1;min-width:150px"><label>Buscar por nombre</label><input type="text" id="buscarNombre" placeholder="🔎 Nombre…" value="${buscarNombre}" oninput="cambiarBuscar(this.value)"/></div>`;
   }
   bar.innerHTML=navHtml+grupoHtml+fechaHtml+buscarHtml;
-  if(verResumen){ const map={registro:'vbReg',resumen:'vbRes',reporte:'vbRep',mensual:'vbMes',edades:'vbEda'}; const el=document.getElementById(map[vista]); if(el) el.classList.add('active'); }
+  if(verResumen){ const map={registro:'vbReg',resumen:'vbRes',reporte:'vbRep',inasistencias:'vbIna',mensual:'vbMes',edades:'vbEda'}; const el=document.getElementById(map[vista]); if(el) el.classList.add('active'); }
 }
 
 window.setVista=function(v){
   vista=v;
   if(unsubResumen){unsubResumen();unsubResumen=null;}
   renderControles();
-  if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='mensual') iniciarMensual(); else if(v==='edades') iniciarEdades(); else loadRegistrosDia(fechaSel);
+  if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='inasistencias') iniciarInasistencias(); else if(v==='mensual') iniciarMensual(); else if(v==='edades') iniciarEdades(); else loadRegistrosDia(fechaSel);
+};
+
+// ─── INASISTENCIAS (solo admin/coord: control de por qué faltó cada niño) ─────
+async function iniciarInasistencias(){
+  const c=document.getElementById('mainContent');
+  c.innerHTML='<div class="loading">Cargando…</div>';
+  try{
+    const snap=await getDocs(query(collection(db,'registros'), where('fecha','==',fechaSel)));
+    regDelDia=snap.docs.map(d=>({id:d.id,...d.data()}));
+  }catch(err){ c.innerHTML='<div class="empty">No se pudo cargar: '+err.message+'</div>'; return; }
+  if(vista==='inasistencias') renderInasistencias();
+}
+function renderInasistencias(){
+  const c=document.getElementById('mainContent');
+  const ests=activos(DATA.estudiantes);
+  const asistSet=new Set(regDelDia.filter(r=>r.asistio).map(r=>r.estId));
+  const regMap={}; regDelDia.forEach(r=>{regMap[r.estId]=r;});
+  const fechaTxt=new Date(String(fechaSel)+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  let totAus=0, totConMotivo=0;
+  const bloques=DATA.grupos.filter(g=>!filtroGrupo||g===filtroGrupo).map(g=>{
+    const enG=ests.filter(e=>e.grupo===g).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    if(!enG.length) return '';
+    const asistieron=enG.filter(e=>asistSet.has(e.id)).length;
+    const ausentes=enG.filter(e=>!asistSet.has(e.id) && matchN(e));
+    if(asistieron===0) return `<div class="repgrupo"><h3>${g}</h3><div class="sub" style="color:#888">Asistencia aún no registrada por la profesora.</div></div>`;
+    if(!ausentes.length) return `<div class="repgrupo"><h3>${g}</h3><div class="sub" style="color:var(--green)">✓ Todos asistieron.</div></div>`;
+    return `<div class="repgrupo">
+      <h3>${g} <span style="font-weight:400;font-size:12px;color:var(--red)">— ${ausentes.length} sin asistir</span></h3>
+      <table class="rtab"><thead><tr><th>Estudiante</th><th>Motivo de inasistencia</th><th class="no-print"></th></tr></thead><tbody>
+      ${ausentes.map(e=>{
+        const r=regMap[e.id]; const mot=(r&&r.motivoInasistencia)?r.motivoInasistencia:''; const por=(r&&r.seguimientoPor)?r.seguimientoPor:'';
+        totAus++; if(mot) totConMotivo++;
+        return `<tr>
+          <td>${e.nombre}</td>
+          <td>${mot?`${mot}${por?` <span style="font-size:11px;color:#888">— ${por}</span>`:''}`:'<span style="color:#c62828">⚠ Sin motivo</span>'}</td>
+          <td class="no-print"><button class="vista-btn" style="padding:6px 12px" onclick="editarMotivoInasistencia('${e.id}')">✏️</button></td>
+        </tr>`;
+      }).join('')}
+      </tbody></table></div>`;
+  }).join('');
+  const sinMotivo=totAus-totConMotivo;
+  c.innerHTML=`
+    <div class="no-print" style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--blue)">🚫 Inasistencias</div>
+      <button class="vista-btn" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="window.print()">🖨️ Imprimir / PDF</button>
+    </div>
+    <div class="report-header"><h2>Fundación Mis Habilidades</h2><div style="font-weight:600;color:var(--blue)">Control de inasistencias</div><div class="meta">${fechaTxt}</div></div>
+    <div class="almcount" style="background:#FFEBEE;color:#c62828">🚫 ${totAus} sin asistir${sinMotivo>0?` · ⚠ ${sinMotivo} sin justificar`:(totAus>0?' · ✓ todos justificados':'')}</div>
+    ${bloques||'<div class="empty">Sin grupos.</div>'}`;
+}
+window.editarMotivoInasistencia=function(estId){
+  const e=DATA.estudiantes.find(x=>x.id===estId);
+  const r=regDelDia.find(x=>x.estId===estId);
+  const ov=document.createElement('div'); ov.className='nov-overlay';
+  ov.innerHTML=`<div class="nov-box">
+    <div class="nov-title">✏️ Motivo de inasistencia — ${e.nombre}</div>
+    <div style="font-size:12px;color:#888;margin:2px 0 8px">${fechaSel}</div>
+    <textarea id="motTxt" rows="4" placeholder="¿Por qué no asistió?"></textarea>
+    <div class="nov-actions"><button class="nov-btn-cancel" id="motCancel">Cancelar</button><button class="nov-btn-save" id="motSave">Guardar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const ta=document.getElementById('motTxt'); ta.value=(r&&r.motivoInasistencia)?r.motivoInasistencia:''; ta.focus();
+  const close=()=>ov.remove();
+  ov.addEventListener('click',ev=>{ if(ev.target===ov) close(); });
+  document.getElementById('motCancel').onclick=close;
+  document.getElementById('motSave').onclick=async function(){
+    const motivo=(ta.value||'').trim();
+    const btn=this; btn.disabled=true; btn.textContent='Guardando…';
+    try{
+      const rid=regId(fechaSel,estId);
+      const base = r?{}:{estId, grupo:e.grupo, fecha:fechaSel, asistio:false, almorzo:false, creadoEn:serverTimestamp()};
+      await setDoc(doc(db,'registros',rid),{...base, motivoInasistencia:motivo, seguimientoPor:currentUser.nombre, seguimientoEn:serverTimestamp(), modificadoEn:serverTimestamp()},{merge:true});
+      if(r){ r.motivoInasistencia=motivo; r.seguimientoPor=currentUser.nombre; }
+      else regDelDia.push({id:rid, estId, grupo:e.grupo, fecha:fechaSel, asistio:false, almorzo:false, motivoInasistencia:motivo, seguimientoPor:currentUser.nombre});
+      const dr=DATA.registros.find(x=>x.id===rid); if(dr){ dr.motivoInasistencia=motivo; dr.seguimientoPor=currentUser.nombre; }
+      close(); renderInasistencias();
+    }catch(err){ btn.disabled=false; btn.textContent='Guardar'; alert('No se pudo guardar: '+err.message); }
+  };
 };
 
 // ─── EDADES (solo Presidente, Coordinadora y Psicóloga — no profesoras) ────────
@@ -386,22 +465,39 @@ function renderMensual(){
     if(r.asistio) asisPorEst[r.estId]=(asisPorEst[r.estId]||0)+1;
     if(r.almorzo) almPorEst[r.estId]=(almPorEst[r.estId]||0)+1;
   });
+  // Inasistencias del mes: por cada día, en los grados que SÍ tomaron asistencia, contar quién faltó (y si quedó sin justificar)
+  const faltasPorEst={}, sinJustPorEst={};
+  [...diasSet].forEach(f=>{
+    const regsDia=regDelMes.filter(r=>r.fecha===f);
+    const asistDia=new Set(regsDia.filter(r=>r.asistio).map(r=>r.estId));
+    const gruposConAsist=new Set(regsDia.filter(r=>r.asistio).map(r=>r.grupo));
+    const regByEst={}; regsDia.forEach(r=>{regByEst[r.estId]=r;});
+    ests.forEach(e=>{
+      if(gruposConAsist.has(e.grupo) && !asistDia.has(e.id)){
+        faltasPorEst[e.id]=(faltasPorEst[e.id]||0)+1;
+        const rr=regByEst[e.id];
+        if(!(rr && rr.motivoInasistencia)) sinJustPorEst[e.id]=(sinJustPorEst[e.id]||0)+1;
+      }
+    });
+  });
   const nombreMes=new Date(mesSel+'-01T00:00:00').toLocaleDateString('es-CO',{month:'long',year:'numeric'});
   const filas=DATA.grupos.map(g=>{
     const enG=ests.filter(e=>e.grupo===g);
     if(!enG.length) return null;
     const asist=enG.reduce((s,e)=>s+(asisPorEst[e.id]||0),0);
     const alm=enG.reduce((s,e)=>s+(almPorEst[e.id]||0),0);
-    return {g, total:enG.length, asist, alm};
+    const faltas=enG.reduce((s,e)=>s+(faltasPorEst[e.id]||0),0);
+    const sinJust=enG.reduce((s,e)=>s+(sinJustPorEst[e.id]||0),0);
+    return {g, total:enG.length, asist, alm, faltas, sinJust};
   }).filter(Boolean);
-  const T={asist:0,alm:0,total:0}; filas.forEach(f=>{T.asist+=f.asist;T.alm+=f.alm;T.total+=f.total;});
+  const T={asist:0,alm:0,total:0,faltas:0,sinJust:0}; filas.forEach(f=>{T.asist+=f.asist;T.alm+=f.alm;T.total+=f.total;T.faltas+=f.faltas;T.sinJust+=f.sinJust;});
   const detalle=DATA.grupos.map(g=>{
     const enG=ests.filter(e=>e.grupo===g).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
     if(!enG.length) return '';
     return `<div class="repgrupo">
       <h3>${g}</h3>
-      <table class="rtab"><thead><tr><th>Estudiante</th><th>Días asistió</th><th>Almuerzos</th></tr></thead><tbody>
-        ${enG.map(e=>`<tr><td>${e.nombre}</td><td>${asisPorEst[e.id]||0}</td><td>${e.alimentacion==='no'?'<span style="color:#bbb">no aplica</span>':(almPorEst[e.id]||0)}</td></tr>`).join('')}
+      <table class="rtab"><thead><tr><th>Estudiante</th><th>Días asistió</th><th>Almuerzos</th><th>Faltas</th><th>Sin justif.</th></tr></thead><tbody>
+        ${enG.map(e=>`<tr><td>${e.nombre}</td><td>${asisPorEst[e.id]||0}</td><td>${e.alimentacion==='no'?'<span style="color:#bbb">no aplica</span>':(almPorEst[e.id]||0)}</td><td>${faltasPorEst[e.id]||0}</td><td>${(sinJustPorEst[e.id]||0)?`<b style="color:#c62828">${sinJustPorEst[e.id]}</b>`:'0'}</td></tr>`).join('')}
       </tbody></table>
     </div>`;
   }).join('');
@@ -412,9 +508,9 @@ function renderMensual(){
     </div>
     <div class="report-header"><h2>Fundación Mis Habilidades</h2><div style="font-weight:600;color:var(--blue)">Reporte mensual de asistencia y almuerzo</div><div class="meta">${nombreMes} · ${diasSet.size} día(s) con registro</div></div>
     <div style="font-weight:700;color:var(--blue);margin:4px 0 8px">Resumen por grado</div>
-    <table class="rtab"><thead><tr><th>Grado</th><th>Estud.</th><th>Asistencias</th><th>Almuerzos</th></tr></thead><tbody>
-      ${filas.map(f=>`<tr><td><b>${f.g}</b></td><td>${f.total}</td><td>${f.asist}</td><td>${f.alm}</td></tr>`).join('')}
-      <tr class="tot"><td>TOTAL</td><td>${T.total}</td><td>${T.asist}</td><td>${T.alm}</td></tr>
+    <table class="rtab"><thead><tr><th>Grado</th><th>Estud.</th><th>Asistencias</th><th>Almuerzos</th><th>Faltas</th><th>Sin justif.</th></tr></thead><tbody>
+      ${filas.map(f=>`<tr><td><b>${f.g}</b></td><td>${f.total}</td><td>${f.asist}</td><td>${f.alm}</td><td>${f.faltas}</td><td>${f.sinJust?`<b style="color:#c62828">${f.sinJust}</b>`:'0'}</td></tr>`).join('')}
+      <tr class="tot"><td>TOTAL</td><td>${T.total}</td><td>${T.asist}</td><td>${T.alm}</td><td>${T.faltas}</td><td>${T.sinJust}</td></tr>
     </tbody></table>
     <div style="font-weight:700;color:var(--blue);margin:18px 0 8px">Detalle por grado</div>
     ${detalle||'<div class="empty">Sin registros en el mes.</div>'}`;
