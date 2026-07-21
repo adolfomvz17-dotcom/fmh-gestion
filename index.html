@@ -503,6 +503,7 @@ window.openModalEst=function(id){
     <div class="form-grid">
       <div class="form-group form-full"><label>Nombre completo</label><input id="mNombre" value="${e.nombre||''}"/></div>
       <div class="form-group"><label>Fecha de nacimiento</label><input id="mNacimiento" type="date" value="${e.fechaNacimiento||''}"/></div>
+      <div class="form-group"><label>N° de documento</label><input id="mDocumento" value="${e.documento||''}" placeholder="Sin registrar"/></div>
       <div class="form-group"><label>Grupo</label><select id="mGrupo">${(DATA.grupos||[]).map(g=>`${opt(g,e.grupo===g)}${g}</option>`).join('')}</select></div>
       <div class="form-group"><label>Modalidad</label><select id="mMod">${opt('TC',e.modalidad==='TC')}Tiempo Completo</option>${opt('MT',e.modalidad==='MT')}Medio Tiempo</option></select></div>
       <div class="form-group"><label>Alimentación</label><select id="mAlim">${opt('incluida',e.alimentacion==='incluida')}Incluida en mensualidad</option>${opt('mensual',e.alimentacion==='mensual')}Mensual (valor aparte)</option>${opt('dia',e.alimentacion==='dia')}Paga por día</option>${opt('no',e.alimentacion==='no')}No incluida</option></select></div>
@@ -575,6 +576,7 @@ window.saveEst=async function(id){
   const datos={
     nombre,
     fechaNacimiento:document.getElementById('mNacimiento').value||'',
+    documento:document.getElementById('mDocumento').value.trim(),
     grupo:document.getElementById('mGrupo').value,
     modalidad:document.getElementById('mMod').value,
     alimentacion:document.getElementById('mAlim').value,
@@ -1681,7 +1683,7 @@ function renderRepEstado(b){
 
   b.innerHTML=sel+`<div class="toolbar no-print"><div></div><div style="margin-left:auto">${btnImprimir}${btnDescargar('descargarEstado()')}</div></div>
   <div class="card"><div class="card-body">${repHeader('Estado de cuenta')}
-    <div style="margin-bottom:14px"><b style="font-size:15px;color:var(--blue)">${e.nombre}</b> &nbsp;<span class="badge badge-pink">${e.grupo}</span></div>
+    <div style="margin-bottom:14px"><b style="font-size:15px;color:var(--blue)">${e.nombre}</b> &nbsp;<span class="badge badge-pink">${e.grupo}</span>${e.documento?` &nbsp;<span style="font-size:12px;color:#666">🪪 Doc: ${e.documento}</span>`:''}${e.fechaNacimiento?` &nbsp;<span style="font-size:12px;color:#666">🎂 ${e.fechaNacimiento}</span>`:''}</div>
     ${fichaTarifaHtml(e)}
     <div style="font-size:13px;margin-bottom:6px"><b>Matrícula:</b> ${matrTxt}</div>
     <div style="font-size:13px;margin-bottom:14px"><b>Almuerzos:</b> ${almTxt}</div>
