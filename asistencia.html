@@ -133,6 +133,7 @@ body{background:#f5f7f7;color:#333}
       <h1>FMH Asistencia<br><small>Staging · <span id="userName"></span> (<span id="userRol"></span>)</small></h1>
     </div>
     <div class="topbar-right">
+      <button class="btn-salir" id="btnSonido" title="Probar el sonido de aviso del comedor" onclick="probarSonido()">🔊</button>
       <button class="btn-salir" onclick="doLogout()">Salir</button>
     </div>
   </div>
@@ -263,7 +264,7 @@ onAuthStateChanged(auth, async (user)=>{
   }
   const b=document.querySelector('.btn-login'); if(b){ b.disabled=false; b.textContent='Ingresar'; }
 });
-window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} const bn=document.getElementById('llamadoBanner'); if(bn) bn.className='hidden'; try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
+window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} detenerAlarma(); ultimoSonado=''; const bn=document.getElementById('llamadoBanner'); if(bn) bn.className='hidden'; try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
 window.cambiarGrupo=function(g){grupoSel=g;renderRegistro();};
 window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else if(vista==='inasistencias') iniciarInasistencias(); else if(vista==='edades') renderEdades(); else loadRegistrosDia(fechaSel);};
 window.cambiarFiltroGrupo=function(g){ filtroGrupo=g; if(vista==='reporte') renderReporte(); else if(vista==='inasistencias') renderInasistencias(); else if(vista==='edades') renderEdades(); };
@@ -331,6 +332,41 @@ window.setVista=function(v){
 };
 
 // ─── LLAMADO AL COMEDOR (coordinación llama · la profesora confirma) ─────────
+// Sonido de alarma: se genera en el propio navegador (no necesita archivos ni internet).
+// Los celulares no dejan sonar hasta que la persona toca la pantalla una vez, por eso
+// "desbloqueamos" el audio con el primer toque que haga en la app.
+let audioCtx=null, alarmaTimer=null, alarmaVeces=0, ultimoSonado='';
+function desbloquearAudio(){
+  try{
+    if(!audioCtx){ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; audioCtx=new AC(); }
+    if(audioCtx.state==='suspended') audioCtx.resume();
+  }catch(err){}
+}
+document.addEventListener('touchstart',desbloquearAudio,{passive:true});
+document.addEventListener('click',desbloquearAudio);
+function pitido(freq,inicio,dur){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type='sine'; o.frequency.value=freq;
+  const t=audioCtx.currentTime+inicio;
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(0.7,t+0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t+dur+0.05);
+}
+function sonarAlarma(){
+  desbloquearAudio();
+  try{ if(audioCtx && audioCtx.state==='running'){ pitido(880,0,0.22); pitido(1175,0.28,0.22); pitido(880,0.56,0.34); } }catch(err){}
+  try{ if(navigator.vibrate) navigator.vibrate([300,120,300,120,500]); }catch(err){}
+}
+function iniciarAlarma(){
+  detenerAlarma(); alarmaVeces=0; sonarAlarma();
+  // repite cada 7 segundos hasta que la profe confirme (máx. ~2 minutos)
+  alarmaTimer=setInterval(()=>{ alarmaVeces++; if(alarmaVeces>=18){ detenerAlarma(); return; } sonarAlarma(); },7000);
+}
+function detenerAlarma(){ if(alarmaTimer){ clearInterval(alarmaTimer); alarmaTimer=null; } }
+window.probarSonido=function(){ desbloquearAudio(); sonarAlarma(); };
+
 const idLlamado = g => hoyLocal()+'_'+String(g).replace(/\//g,'-');
 function iniciarListenerLlamados(){
   if(unsubLlamados){unsubLlamados();unsubLlamados=null;}
@@ -350,10 +386,14 @@ function pintarBannerLlamado(){
     const l=pend[0];
     el.className='llamado-banner';
     el.innerHTML='🔔 <b>¡Pueden bajar al comedor!</b> <span style="opacity:.9;font-weight:400">'+l.grupo+(l.llamadoHora?(' · '+l.llamadoHora):'')+'</span> <button class="llamado-btn" onclick="confirmarLlamado(\''+l.grupo+'\')">✅ Ya vamos</button>';
+    const clave=l.grupo+'|'+(l.llamadoHora||'');   // si la vuelven a llamar, suena otra vez
+    if(ultimoSonado!==clave){ ultimoSonado=clave; iniciarAlarma(); }
     return;
   }
+  detenerAlarma();
   const conf=mis.map(g=>llamadosHoy[g]).filter(x=>x && x.confirmado);
   if(conf.length){ el.className='llamado-banner ok'; el.innerHTML='✅ Comedor confirmado — '+conf[0].grupo+(conf[0].confirmadoHora?(' · '+conf[0].confirmadoHora):''); return; }
+  ultimoSonado='';
   el.className='hidden'; el.innerHTML='';
 }
 function renderComedor(){
@@ -374,7 +414,7 @@ function renderComedor(){
   }).join('');
   c.innerHTML=`
     <div class="live-tag"><span class="live-dot"></span>En vivo · llamado al comedor de hoy</div>
-    <div style="margin:0 0 12px;color:#888;font-size:13px">Toca <b>Llamar</b> y a la profesora de ese grado le aparece el aviso en su pantalla al instante. Cuando ella confirme, lo verás aquí.</div>
+    <div style="margin:0 0 12px;color:#888;font-size:13px">Toca <b>Llamar</b> y a la profesora de ese grado le suena la alarma 🔔 y le aparece el aviso en su pantalla al instante. Cuando ella confirme, lo verás aquí.<br>La alarma se repite cada 7 segundos hasta que ella confirme. <button class="llamar-btn sec" style="padding:5px 12px;font-size:12px;margin-top:6px" onclick="probarSonido()">🔊 Escuchar el sonido</button></div>
     ${tarjetas||'<div style="color:#888;font-size:14px">No hay grupos cargados.</div>'}`;
 }
 window.llamarGrupo=async function(g){
@@ -383,6 +423,7 @@ window.llamarGrupo=async function(g){
   catch(err){ alert('No se pudo llamar: '+err.message); }
 };
 window.confirmarLlamado=async function(g){
+  detenerAlarma();
   const hora=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:true});
   try{ await updateDoc(doc(db,'llamados',idLlamado(g)),{ confirmado:true, confirmadoHora:hora, confirmadoPor:currentUser.nombre }); }
   catch(err){ alert('No se pudo confirmar: '+err.message); }
