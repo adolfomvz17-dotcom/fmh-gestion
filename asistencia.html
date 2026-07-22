@@ -52,6 +52,13 @@ body{background:#f5f7f7;color:#333}
 .badge-red{background:#FFEBEE;color:var(--red)}
 .loading,.empty{text-align:center;color:#999;padding:30px;font-size:14px}
 .lock-note{background:#FFF3E0;color:#E65100;border:1px solid #ffe0b2;border-radius:10px;padding:10px 14px;font-size:12px;margin-bottom:14px}
+.llamado-banner{background:linear-gradient(135deg,#FF6F00,#F9A825);color:#fff;padding:14px 18px;font-size:16px;font-weight:600;display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;text-align:center;animation:pulseBanner 1.4s infinite}
+@keyframes pulseBanner{0%{filter:brightness(1)}50%{filter:brightness(1.18)}100%{filter:brightness(1)}}
+.llamado-banner.ok{background:#2E7D32;animation:none;font-size:14px}
+.llamado-btn{background:#fff;color:#E65100;border:none;border-radius:10px;padding:10px 18px;font-size:15px;font-weight:700;cursor:pointer}
+.comedor-fila{background:#fff;border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.llamar-btn{background:#F57C00;color:#fff;border:none;border-radius:10px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+.llamar-btn.sec{background:#fff;color:#F57C00;border:1.5px solid #F57C00}
 .cumple-banner{background:linear-gradient(135deg,#FFF3E0,#FCE4EC);border:1px solid #ffd6a5;border-radius:14px;padding:12px 16px;margin-bottom:14px}
 .cumple-tit{font-weight:700;color:#E65100;font-size:14px;margin-bottom:6px}
 .cumple-lista{font-size:13px;color:#5d4037;line-height:1.7}
@@ -129,6 +136,7 @@ body{background:#f5f7f7;color:#333}
       <button class="btn-salir" onclick="doLogout()">Salir</button>
     </div>
   </div>
+  <div id="llamadoBanner" class="hidden"></div>
   <div class="controls" id="controlsBar"></div>
   <div class="content" id="mainContent"><div class="loading">Cargando…</div></div>
 </div>
@@ -225,6 +233,7 @@ async function entrarConUsuario(user, manual){
   document.getElementById('userRol').textContent={admin:'Administrador',coord:'Coordinadora',profe:'Profesora'}[found.rol];
   renderControles();
   setVista('registro');
+  iniciarListenerLlamados();
   return true;
 }
 
@@ -254,7 +263,7 @@ onAuthStateChanged(auth, async (user)=>{
   }
   const b=document.querySelector('.btn-login'); if(b){ b.disabled=false; b.textContent='Ingresar'; }
 });
-window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
+window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} const bn=document.getElementById('llamadoBanner'); if(bn) bn.className='hidden'; try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
 window.cambiarGrupo=function(g){grupoSel=g;renderRegistro();};
 window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else if(vista==='inasistencias') iniciarInasistencias(); else if(vista==='edades') renderEdades(); else loadRegistrosDia(fechaSel);};
 window.cambiarFiltroGrupo=function(g){ filtroGrupo=g; if(vista==='reporte') renderReporte(); else if(vista==='inasistencias') renderInasistencias(); else if(vista==='edades') renderEdades(); };
@@ -273,7 +282,7 @@ async function loadRegistrosDia(fecha){
 }
 
 // ─── BARRA DE CONTROLES Y VISTAS ──────────────────────────────────────────────
-let vista='registro', unsubResumen=null, regDelDia=[], filtroGrupo='', buscarNombre='', mesSel=hoyLocal().slice(0,7), regDelMes=[];
+let vista='registro', unsubResumen=null, regDelDia=[], filtroGrupo='', buscarNombre='', mesSel=hoyLocal().slice(0,7), regDelMes=[], llamadosHoy={}, unsubLlamados=null;
 const matchN = e => { const q=(buscarNombre||'').trim().toLowerCase(); return !q || (e.nombre||'').toLowerCase().includes(q); };
 
 function renderControles(){
@@ -281,6 +290,7 @@ function renderControles(){
   const verResumen = currentUser.rol!=='profe';
   const navHtml = verResumen ? `<div class="vista-nav">
       <button class="vista-btn" id="vbReg" onclick="setVista('registro')">📋 Registro</button>
+      <button class="vista-btn" id="vbCom" onclick="setVista('comedor')">🔔 Comedor</button>
       <button class="vista-btn" id="vbRes" onclick="setVista('resumen')">📊 Resumen</button>
       <button class="vista-btn" id="vbRep" onclick="setVista('reporte')">🖨️ Reporte diario</button>
       <button class="vista-btn" id="vbIna" onclick="setVista('inasistencias')">🚫 Inasistencias</button>
@@ -294,7 +304,9 @@ function renderControles(){
     grupoHtml=`<div><label>Grupo</label><select id="filtroGrupo" onchange="cambiarFiltroGrupo(this.value)"><option value="" ${filtroGrupo===''?'selected':''}>Todos los grupos</option>${gruposVisibles.map(g=>`<option value="${g}" ${g===filtroGrupo?'selected':''}>${g}</option>`).join('')}</select></div>`;
   }
   let fechaHtml='';
-  if(vista==='mensual'){
+  if(vista==='comedor'){
+    fechaHtml='';
+  }else if(vista==='mensual'){
     fechaHtml=`<div><label>Mes</label><input type="month" id="mesSel" value="${mesSel}" max="${hoyLocal().slice(0,7)}" onchange="cambiarMes(this.value)"/></div>`;
   }else if(vista==='edades'){
     fechaHtml=`<div><label>Edad a la fecha</label><input type="date" id="fechaSel" value="${fechaSel}" onchange="cambiarFecha(this.value)"/></div>`;
@@ -308,14 +320,72 @@ function renderControles(){
     buscarHtml=`<div style="flex:1;min-width:150px"><label>Buscar por nombre</label><input type="text" id="buscarNombre" placeholder="🔎 Nombre…" value="${buscarNombre}" oninput="cambiarBuscar(this.value)"/></div>`;
   }
   bar.innerHTML=navHtml+grupoHtml+fechaHtml+buscarHtml;
-  if(verResumen){ const map={registro:'vbReg',resumen:'vbRes',reporte:'vbRep',inasistencias:'vbIna',mensual:'vbMes',edades:'vbEda'}; const el=document.getElementById(map[vista]); if(el) el.classList.add('active'); }
+  if(verResumen){ const map={registro:'vbReg',comedor:'vbCom',resumen:'vbRes',reporte:'vbRep',inasistencias:'vbIna',mensual:'vbMes',edades:'vbEda'}; const el=document.getElementById(map[vista]); if(el) el.classList.add('active'); }
 }
 
 window.setVista=function(v){
   vista=v;
   if(unsubResumen){unsubResumen();unsubResumen=null;}
   renderControles();
-  if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='inasistencias') iniciarInasistencias(); else if(v==='mensual') iniciarMensual(); else if(v==='edades') iniciarEdades(); else loadRegistrosDia(fechaSel);
+  if(v==='comedor') renderComedor(); else if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='inasistencias') iniciarInasistencias(); else if(v==='mensual') iniciarMensual(); else if(v==='edades') iniciarEdades(); else loadRegistrosDia(fechaSel);
+};
+
+// ─── LLAMADO AL COMEDOR (coordinación llama · la profesora confirma) ─────────
+const idLlamado = g => hoyLocal()+'_'+String(g).replace(/\//g,'-');
+function iniciarListenerLlamados(){
+  if(unsubLlamados){unsubLlamados();unsubLlamados=null;}
+  const hoy=hoyLocal();
+  unsubLlamados=onSnapshot(query(collection(db,'llamados'), where('fecha','==',hoy)), snap=>{
+    llamadosHoy={}; snap.docs.forEach(d=>{ const r=d.data(); if(r && r.grupo) llamadosHoy[r.grupo]=r; });
+    pintarBannerLlamado();
+    if(vista==='comedor') renderComedor();
+  }, err=>{ /* si falla, no molestamos al usuario */ });
+}
+function pintarBannerLlamado(){
+  const el=document.getElementById('llamadoBanner'); if(!el || !currentUser) return;
+  if(!esProfe()){ el.className='hidden'; el.innerHTML=''; return; }
+  const mis=(gruposVisibles||[]);
+  const pend=mis.map(g=>llamadosHoy[g]).filter(x=>x && !x.confirmado);
+  if(pend.length){
+    const l=pend[0];
+    el.className='llamado-banner';
+    el.innerHTML='🔔 <b>¡Pueden bajar al comedor!</b> <span style="opacity:.9;font-weight:400">'+l.grupo+(l.llamadoHora?(' · '+l.llamadoHora):'')+'</span> <button class="llamado-btn" onclick="confirmarLlamado(\''+l.grupo+'\')">✅ Ya vamos</button>';
+    return;
+  }
+  const conf=mis.map(g=>llamadosHoy[g]).filter(x=>x && x.confirmado);
+  if(conf.length){ el.className='llamado-banner ok'; el.innerHTML='✅ Comedor confirmado — '+conf[0].grupo+(conf[0].confirmadoHora?(' · '+conf[0].confirmadoHora):''); return; }
+  el.className='hidden'; el.innerHTML='';
+}
+function renderComedor(){
+  const c=document.getElementById('mainContent');
+  const tarjetas=(DATA.grupos||[]).map(g=>{
+    const l=llamadosHoy[g]; let estado, btn, borde;
+    if(!l){
+      borde='var(--border)'; estado='<span style="color:#888">Sin llamar</span>';
+      btn='<button class="llamar-btn" onclick="llamarGrupo(\''+g+'\')">🔔 Llamar</button>';
+    }else if(!l.confirmado){
+      borde='#F9A825'; estado='<span style="color:#E65100;font-weight:600">⏳ Llamado '+(l.llamadoHora||'')+' · esperando confirmación</span>';
+      btn='<button class="llamar-btn sec" onclick="llamarGrupo(\''+g+'\')">🔁 Volver a llamar</button>';
+    }else{
+      borde='var(--green)'; estado='<span style="color:var(--green);font-weight:600">✅ Confirmado '+(l.confirmadoHora||'')+'</span><span style="color:#888;font-size:12px"> · '+(l.confirmadoPor||'la profesora')+'</span>';
+      btn='<button class="llamar-btn sec" onclick="llamarGrupo(\''+g+'\')">🔁 Llamar de nuevo</button>';
+    }
+    return '<div class="comedor-fila" style="border-left:5px solid '+borde+'"><div><div style="font-weight:700;font-size:15px">'+g+'</div><div style="font-size:13px;margin-top:2px">'+estado+'</div></div>'+btn+'</div>';
+  }).join('');
+  c.innerHTML=`
+    <div class="live-tag"><span class="live-dot"></span>En vivo · llamado al comedor de hoy</div>
+    <div style="margin:0 0 12px;color:#888;font-size:13px">Toca <b>Llamar</b> y a la profesora de ese grado le aparece el aviso en su pantalla al instante. Cuando ella confirme, lo verás aquí.</div>
+    ${tarjetas||'<div style="color:#888;font-size:14px">No hay grupos cargados.</div>'}`;
+}
+window.llamarGrupo=async function(g){
+  const hora=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:true});
+  try{ await setDoc(doc(db,'llamados',idLlamado(g)),{ fecha:hoyLocal(), grupo:g, llamadoEn:serverTimestamp(), llamadoHora:hora, llamadoPor:currentUser.nombre, confirmado:false, confirmadoHora:'', confirmadoPor:'' }); }
+  catch(err){ alert('No se pudo llamar: '+err.message); }
+};
+window.confirmarLlamado=async function(g){
+  const hora=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:true});
+  try{ await updateDoc(doc(db,'llamados',idLlamado(g)),{ confirmado:true, confirmadoHora:hora, confirmadoPor:currentUser.nombre }); }
+  catch(err){ alert('No se pudo confirmar: '+err.message); }
 };
 
 // ─── INASISTENCIAS (solo admin/coord: control de por qué faltó cada niño) ─────
