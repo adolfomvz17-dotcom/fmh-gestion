@@ -56,6 +56,15 @@ body{background:#f5f7f7;color:#333}
 @keyframes pulseBanner{0%{filter:brightness(1)}50%{filter:brightness(1.18)}100%{filter:brightness(1)}}
 .llamado-banner.ok{background:#2E7D32;animation:none;font-size:14px}
 .llamado-btn{background:#fff;color:#E65100;border:none;border-radius:10px;padding:10px 18px;font-size:15px;font-weight:700;cursor:pointer}
+/* Aviso de pantalla completa para la profe: imposible no verlo, aunque haya bulla */
+.llamado-full{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff;padding:24px;animation:flashFull .8s steps(1,end) infinite}
+@keyframes flashFull{0%{background:#E65100}50%{background:#C62828}100%{background:#E65100}}
+.llamado-full .lf-emoji{font-size:88px;line-height:1;margin-bottom:10px;animation:shake .5s infinite}
+@keyframes shake{0%,100%{transform:rotate(-12deg)}50%{transform:rotate(12deg)}}
+.llamado-full .lf-tit{font-size:34px;font-weight:800;margin-bottom:6px}
+.llamado-full .lf-sub{font-size:20px;font-weight:600;margin-bottom:26px;opacity:.95}
+.llamado-full .lf-btn{background:#fff;color:#C62828;border:none;border-radius:16px;padding:20px 34px;font-size:24px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.llamado-full .lf-mute{margin-top:20px;background:transparent;border:1.5px solid rgba(255,255,255,.7);color:#fff;border-radius:12px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer}
 .comedor-fila{background:#fff;border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .llamar-btn{background:#F57C00;color:#fff;border:none;border-radius:10px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
 .llamar-btn.sec{background:#fff;color:#F57C00;border:1.5px solid #F57C00}
@@ -138,6 +147,7 @@ body{background:#f5f7f7;color:#333}
     </div>
   </div>
   <div id="llamadoBanner" class="hidden"></div>
+  <div id="llamadoFull" class="hidden"></div>
   <div class="controls" id="controlsBar"></div>
   <div class="content" id="mainContent"><div class="loading">Cargando…</div></div>
 </div>
@@ -264,7 +274,7 @@ onAuthStateChanged(auth, async (user)=>{
   }
   const b=document.querySelector('.btn-login'); if(b){ b.disabled=false; b.textContent='Ingresar'; }
 });
-window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} detenerAlarma(); ultimoSonado=''; const bn=document.getElementById('llamadoBanner'); if(bn) bn.className='hidden'; try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
+window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} detenerAlarma(); ultimoSonado=''; const bn=document.getElementById('llamadoBanner'); if(bn){ bn.className='hidden'; bn.innerHTML=''; } const fl=document.getElementById('llamadoFull'); if(fl){ fl.className='hidden'; fl.innerHTML=''; } try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
 window.cambiarGrupo=function(g){grupoSel=g;renderRegistro();};
 window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else if(vista==='inasistencias') iniciarInasistencias(); else if(vista==='edades') renderEdades(); else loadRegistrosDia(fechaSel);};
 window.cambiarFiltroGrupo=function(g){ filtroGrupo=g; if(vista==='reporte') renderReporte(); else if(vista==='inasistencias') renderInasistencias(); else if(vista==='edades') renderEdades(); };
@@ -346,23 +356,30 @@ document.addEventListener('touchstart',desbloquearAudio,{passive:true});
 document.addEventListener('click',desbloquearAudio);
 function pitido(freq,inicio,dur){
   const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-  o.type='sine'; o.frequency.value=freq;
+  // onda cuadrada = timbre más penetrante y fuerte, se abre paso entre el ruido
+  o.type='square'; o.frequency.value=freq;
   const t=audioCtx.currentTime+inicio;
   g.gain.setValueAtTime(0.0001,t);
-  g.gain.exponentialRampToValueAtTime(0.7,t+0.02);
+  g.gain.exponentialRampToValueAtTime(0.9,t+0.01);
   g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
   o.connect(g); g.connect(audioCtx.destination);
   o.start(t); o.stop(t+dur+0.05);
 }
 function sonarAlarma(){
   desbloquearAudio();
-  try{ if(audioCtx && audioCtx.state==='running'){ pitido(880,0,0.22); pitido(1175,0.28,0.22); pitido(880,0.56,0.34); } }catch(err){}
-  try{ if(navigator.vibrate) navigator.vibrate([300,120,300,120,500]); }catch(err){}
+  try{
+    if(audioCtx && audioCtx.state==='running'){
+      // sirena de dos tonos repetida (tipo alarma), fuerte y llamativa
+      let t=0;
+      for(let i=0;i<4;i++){ pitido(988,t,0.18); pitido(1319,t+0.2,0.18); t+=0.42; }
+    }
+  }catch(err){}
+  try{ if(navigator.vibrate) navigator.vibrate([400,150,400,150,400,150,600]); }catch(err){}
 }
 function iniciarAlarma(){
   detenerAlarma(); alarmaVeces=0; sonarAlarma();
-  // repite cada 7 segundos hasta que la profe confirme (máx. ~2 minutos)
-  alarmaTimer=setInterval(()=>{ alarmaVeces++; if(alarmaVeces>=18){ detenerAlarma(); return; } sonarAlarma(); },7000);
+  // repite cada 4 segundos hasta que la profe confirme (máx. ~3 minutos)
+  alarmaTimer=setInterval(()=>{ alarmaVeces++; if(alarmaVeces>=45){ detenerAlarma(); return; } sonarAlarma(); },4000);
 }
 function detenerAlarma(){ if(alarmaTimer){ clearInterval(alarmaTimer); alarmaTimer=null; } }
 window.probarSonido=function(){ desbloquearAudio(); sonarAlarma(); };
@@ -378,24 +395,37 @@ function iniciarListenerLlamados(){
   }, err=>{ /* si falla, no molestamos al usuario */ });
 }
 function pintarBannerLlamado(){
-  const el=document.getElementById('llamadoBanner'); if(!el || !currentUser) return;
-  if(!esProfe()){ el.className='hidden'; el.innerHTML=''; return; }
+  const el=document.getElementById('llamadoBanner');
+  const full=document.getElementById('llamadoFull');
+  if(!el || !full || !currentUser) return;
+  if(!esProfe()){ el.className='hidden'; el.innerHTML=''; full.className='hidden'; full.innerHTML=''; return; }
   const mis=(gruposVisibles||[]);
   const pend=mis.map(g=>llamadosHoy[g]).filter(x=>x && !x.confirmado);
   if(pend.length){
     const l=pend[0];
+    // franja normal (por si cierra el aviso grande)
     el.className='llamado-banner';
     el.innerHTML='🔔 <b>¡Pueden bajar al comedor!</b> <span style="opacity:.9;font-weight:400">'+l.grupo+(l.llamadoHora?(' · '+l.llamadoHora):'')+'</span> <button class="llamado-btn" onclick="confirmarLlamado(\''+l.grupo+'\')">✅ Ya vamos</button>';
+    // aviso GRANDE de pantalla completa (imposible no verlo)
+    full.className='llamado-full';
+    full.innerHTML='<div class="lf-emoji">🔔</div>'
+      +'<div class="lf-tit">¡BAJAR AL COMEDOR!</div>'
+      +'<div class="lf-sub">'+l.grupo+(l.llamadoHora?(' · '+l.llamadoHora):'')+'</div>'
+      +'<button class="lf-btn" onclick="confirmarLlamado(\''+l.grupo+'\')">✅ Ya vamos</button>'
+      +'<button class="lf-mute" onclick="silenciarAviso()">🔕 Silenciar sonido</button>';
     const clave=l.grupo+'|'+(l.llamadoHora||'');   // si la vuelven a llamar, suena otra vez
     if(ultimoSonado!==clave){ ultimoSonado=clave; iniciarAlarma(); }
     return;
   }
   detenerAlarma();
+  full.className='hidden'; full.innerHTML='';
   const conf=mis.map(g=>llamadosHoy[g]).filter(x=>x && x.confirmado);
   if(conf.length){ el.className='llamado-banner ok'; el.innerHTML='✅ Comedor confirmado — '+conf[0].grupo+(conf[0].confirmadoHora?(' · '+conf[0].confirmadoHora):''); return; }
   ultimoSonado='';
   el.className='hidden'; el.innerHTML='';
 }
+// Solo apaga el sonido; el aviso rojo sigue en pantalla hasta que confirme.
+window.silenciarAviso=function(){ detenerAlarma(); };
 function renderComedor(){
   const c=document.getElementById('mainContent');
   const tarjetas=(DATA.grupos||[]).map(g=>{
