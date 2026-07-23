@@ -504,6 +504,7 @@ window.openModalEst=function(id){
       <div class="form-group form-full"><label>Nombre completo</label><input id="mNombre" value="${e.nombre||''}"/></div>
       <div class="form-group"><label>Fecha de nacimiento</label><input id="mNacimiento" type="date" value="${e.fechaNacimiento||''}"/></div>
       <div class="form-group"><label>N° de documento</label><input id="mDocumento" value="${e.documento||''}" placeholder="Sin registrar"/></div>
+      <div class="form-group"><label>Sexo</label><select id="mSexo">${opt('',!e.sexo)}— Sin registrar —</option>${opt('M',e.sexo==='M')}Niño</option>${opt('F',e.sexo==='F')}Niña</option></select></div>
       <div class="form-group"><label>Grupo</label><select id="mGrupo">${(DATA.grupos||[]).map(g=>`${opt(g,e.grupo===g)}${g}</option>`).join('')}</select></div>
       <div class="form-group"><label>Modalidad</label><select id="mMod">${opt('TC',e.modalidad==='TC')}Tiempo Completo</option>${opt('MT',e.modalidad==='MT')}Medio Tiempo</option></select></div>
       <div class="form-group"><label>Alimentación</label><select id="mAlim">${opt('incluida',e.alimentacion==='incluida')}Incluida en mensualidad</option>${opt('mensual',e.alimentacion==='mensual')}Mensual (valor aparte)</option>${opt('dia',e.alimentacion==='dia')}Paga por día</option>${opt('no',e.alimentacion==='no')}No incluida</option></select></div>
@@ -577,6 +578,7 @@ window.saveEst=async function(id){
     nombre,
     fechaNacimiento:document.getElementById('mNacimiento').value||'',
     documento:document.getElementById('mDocumento').value.trim(),
+    sexo:document.getElementById('mSexo').value,
     grupo:document.getElementById('mGrupo').value,
     modalidad:document.getElementById('mMod').value,
     alimentacion:document.getElementById('mAlim').value,

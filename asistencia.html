@@ -76,6 +76,12 @@ body{background:#f5f7f7;color:#333}
 .nov-title{font-weight:700;color:var(--blue);font-size:16px}
 .nov-box textarea{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box}
 .nov-box textarea:focus{border-color:var(--teal)}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;border-top:4px solid var(--teal)}
+.stat-card .num{font-size:26px;font-weight:800;color:var(--blue)}
+.stat-card .lbl{font-size:12px;color:#666;margin-top:4px;text-transform:uppercase;letter-spacing:.4px}
+.stat-card.pink{border-top-color:#E91E8C}
+.stat-card.yellow{border-top-color:var(--yellow)}
 .nov-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
 .nov-btn-cancel{background:#fff;border:1.5px solid var(--border);color:#666;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer}
 .nov-btn-save{background:var(--teal);border:none;color:#fff;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer}
@@ -307,6 +313,7 @@ function renderControles(){
       <button class="vista-btn" id="vbIna" onclick="setVista('inasistencias')">🚫 Inasistencias</button>
       <button class="vista-btn" id="vbMes" onclick="setVista('mensual')">📅 Mensual</button>
       <button class="vista-btn" id="vbEda" onclick="setVista('edades')">👶 Edades</button>
+      <button class="vista-btn" id="vbEst" onclick="setVista('estadisticas')">📊 Estadísticas</button>
     </div>` : '';
   let grupoHtml='';
   if(vista==='registro'){
@@ -331,14 +338,14 @@ function renderControles(){
     buscarHtml=`<div style="flex:1;min-width:150px"><label>Buscar por nombre</label><input type="text" id="buscarNombre" placeholder="🔎 Nombre…" value="${buscarNombre}" oninput="cambiarBuscar(this.value)"/></div>`;
   }
   bar.innerHTML=navHtml+grupoHtml+fechaHtml+buscarHtml;
-  if(verResumen){ const map={registro:'vbReg',comedor:'vbCom',resumen:'vbRes',reporte:'vbRep',inasistencias:'vbIna',mensual:'vbMes',edades:'vbEda'}; const el=document.getElementById(map[vista]); if(el) el.classList.add('active'); }
+  if(verResumen){ const map={registro:'vbReg',comedor:'vbCom',resumen:'vbRes',reporte:'vbRep',inasistencias:'vbIna',mensual:'vbMes',edades:'vbEda',estadisticas:'vbEst'}; const el=document.getElementById(map[vista]); if(el) el.classList.add('active'); }
 }
 
 window.setVista=function(v){
   vista=v;
   if(unsubResumen){unsubResumen();unsubResumen=null;}
   renderControles();
-  if(v==='comedor') renderComedor(); else if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='inasistencias') iniciarInasistencias(); else if(v==='mensual') iniciarMensual(); else if(v==='edades') iniciarEdades(); else loadRegistrosDia(fechaSel);
+  if(v==='comedor') renderComedor(); else if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='inasistencias') iniciarInasistencias(); else if(v==='mensual') iniciarMensual(); else if(v==='edades') iniciarEdades(); else if(v==='estadisticas') iniciarEstadisticas(); else loadRegistrosDia(fechaSel);
 };
 
 // ─── LLAMADO AL COMEDOR (coordinación llama · la profesora confirma) ─────────
@@ -585,6 +592,88 @@ function renderEdades(){
     <div class="live-tag no-print"><span class="live-dot"></span>Edad a la fecha: ${refTxt}</div>
     ${bloques||'<div class="empty">No hay estudiantes con fecha de nacimiento que coincidan.</div>'}
     ${sinFecha.length?`<div class="lock-note no-print" style="margin-top:12px">📅 ${sinFecha.length} estudiante(s) sin fecha de nacimiento — cárgala en la app de Pagos (Editar).</div>`:''}`;
+}
+
+// ─── ESTADÍSTICAS: sexo por grado + rangos de edad (solo admin/coord) ─────────
+async function iniciarEstadisticas(){
+  const c=document.getElementById('mainContent');
+  c.innerHTML='<div class="loading">Cargando estadísticas…</div>';
+  try{ // refresca estudiantes para reflejar sexos/fechas recién cargados en Pagos
+    const snap=await getDocs(collection(db,'estudiantes'));
+    DATA.estudiantes=snap.docs.map(d=>({id:d.id,...d.data()}));
+  }catch(err){ /* si falla, usa lo que haya en memoria */ }
+  if(vista==='estadisticas') renderEstadisticas();
+}
+function renderEstadisticas(){
+  const c=document.getElementById('mainContent');
+  const ests=activos(DATA.estudiantes);
+  const hoyTxt=new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'});
+
+  // ── 1) Sexo por grado ──
+  let tN=0,tF=0,tS=0;
+  const filasGrado=DATA.grupos.map(g=>{
+    const enG=ests.filter(e=>e.grupo===g);
+    if(!enG.length) return '';
+    const n=enG.filter(e=>e.sexo==='M').length;
+    const f=enG.filter(e=>e.sexo==='F').length;
+    const s=enG.length-n-f;
+    tN+=n; tF+=f; tS+=s;
+    return `<tr><td><b>${g}</b></td><td>${n}</td><td>${f}</td><td>${s?('<span style="color:#E65100">'+s+'</span>'):'0'}</td><td><b>${enG.length}</b></td></tr>`;
+  }).join('');
+  const totalGen=tN+tF+tS;
+
+  // ── 2) Rangos de edad ──
+  const RANGOS=[
+    {lbl:'0 a 4 años', min:0, max:4},
+    {lbl:'5 a 9 años', min:5, max:9},
+    {lbl:'10 a 14 años', min:10, max:14},
+    {lbl:'15 a 19 años', min:15, max:19},
+    {lbl:'20 a 29 años', min:20, max:29},
+    {lbl:'30 años o más', min:30, max:200},
+  ];
+  const conEdad=ests.map(e=>{ const ym=e.fechaNacimiento?edadYM(e.fechaNacimiento):null; return {e, edad: ym?ym.a:null}; });
+  const sinFecha=conEdad.filter(x=>x.edad===null).length;
+  const filasEdad=RANGOS.map(r=>{
+    const grupo=conEdad.filter(x=>x.edad!==null && x.edad>=r.min && x.edad<=r.max);
+    const n=grupo.filter(x=>x.e.sexo==='M').length;
+    const f=grupo.filter(x=>x.e.sexo==='F').length;
+    return `<tr><td><b>${r.lbl}</b></td><td>${n}</td><td>${f}</td><td><b>${grupo.length}</b></td></tr>`;
+  }).join('');
+
+  c.innerHTML=`
+    <div class="no-print" style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--blue)">📊 Estadísticas de la fundación</div>
+      <button class="vista-btn" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="window.print()">🖨️ Imprimir / PDF</button>
+    </div>
+    <div class="report-header"><h2>Fundación Mis Habilidades</h2><div style="font-weight:600;color:var(--blue)">Estadísticas de estudiantes</div><div class="meta">Generado el ${hoyTxt}</div></div>
+
+    <div class="stats-grid" style="margin-bottom:16px">
+      <div class="stat-card blue"><div class="num">${totalGen}</div><div class="lbl">Total estudiantes</div></div>
+      <div class="stat-card blue"><div class="num">👦 ${tN}</div><div class="lbl">Niños</div></div>
+      <div class="stat-card pink"><div class="num">👧 ${tF}</div><div class="lbl">Niñas</div></div>
+      ${tS?`<div class="stat-card yellow"><div class="num">❔ ${tS}</div><div class="lbl">Sin sexo registrado</div></div>`:''}
+    </div>
+
+    <div class="repgrupo">
+      <h3>👦👧 Niños y niñas por grado</h3>
+      <table class="rtab"><thead><tr><th>Grado</th><th>👦 Niños</th><th>👧 Niñas</th><th>❔ Sin dato</th><th>Total</th></tr></thead>
+      <tbody>
+        ${filasGrado||'<tr><td colspan="5" style="color:#888">No hay estudiantes.</td></tr>'}
+        <tr class="tot"><td>TOTAL FUNDACIÓN</td><td>${tN}</td><td>${tF}</td><td>${tS}</td><td>${totalGen}</td></tr>
+      </tbody></table>
+    </div>
+
+    <div class="repgrupo">
+      <h3>🎂 Estudiantes por rango de edad</h3>
+      <div class="sub">Edad calculada a hoy, ${hoyTxt}</div>
+      <table class="rtab"><thead><tr><th>Rango de edad</th><th>👦 Niños</th><th>👧 Niñas</th><th>Total</th></tr></thead>
+      <tbody>
+        ${filasEdad}
+        <tr class="tot"><td>TOTAL CON FECHA</td><td>${conEdad.filter(x=>x.edad!==null&&x.e.sexo==='M').length}</td><td>${conEdad.filter(x=>x.edad!==null&&x.e.sexo==='F').length}</td><td>${conEdad.filter(x=>x.edad!==null).length}</td></tr>
+      </tbody></table>
+      ${sinFecha?`<div class="lock-note no-print" style="margin-top:10px">📅 ${sinFecha} estudiante(s) sin fecha de nacimiento (no cuentan en los rangos). Cárgala en la app de Pagos.</div>`:''}
+    </div>
+    ${tS?`<div class="lock-note no-print" style="margin-top:4px">👉 Hay ${tS} estudiante(s) sin sexo registrado. Complétalos con la herramienta de llenado rápido o editándolos en la app de Pagos.</div>`:''}`;
 }
 
 // ─── REPORTE MENSUAL (solo admin/coord) ───────────────────────────────────────
