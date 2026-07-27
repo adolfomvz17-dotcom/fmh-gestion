@@ -353,14 +353,19 @@ window.setVista=function(v){
 // Los celulares no dejan sonar hasta que la persona toca la pantalla una vez, por eso
 // "desbloqueamos" el audio con el primer toque que haga en la app.
 let audioCtx=null, alarmaTimer=null, alarmaVeces=0, ultimoSonado='';
-function desbloquearAudio(){
+function ensureAudioCtx(){
   try{
-    if(!audioCtx){ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; audioCtx=new AC(); }
-    if(audioCtx.state==='suspended') audioCtx.resume();
-  }catch(err){}
+    if(!audioCtx){ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return null; audioCtx=new AC(); }
+  }catch(err){ return null; }
+  return audioCtx;
+}
+function desbloquearAudio(){
+  const ctx=ensureAudioCtx(); if(!ctx) return;
+  if(ctx.state==='suspended'){ ctx.resume().catch(()=>{}); }
 }
 document.addEventListener('touchstart',desbloquearAudio,{passive:true});
 document.addEventListener('click',desbloquearAudio);
+document.addEventListener('pointerdown',desbloquearAudio);
 function pitido(freq,inicio,dur){
   const o=audioCtx.createOscillator(), g=audioCtx.createGain();
   // onda cuadrada = timbre más penetrante y fuerte, se abre paso entre el ruido
@@ -372,15 +377,21 @@ function pitido(freq,inicio,dur){
   o.connect(g); g.connect(audioCtx.destination);
   o.start(t); o.stop(t+dur+0.05);
 }
-function sonarAlarma(){
-  desbloquearAudio();
+function _tocarSirena(){
   try{
-    if(audioCtx && audioCtx.state==='running'){
-      // sirena de dos tonos repetida (tipo alarma), fuerte y llamativa
-      let t=0;
-      for(let i=0;i<4;i++){ pitido(988,t,0.18); pitido(1319,t+0.2,0.18); t+=0.42; }
-    }
+    if(!audioCtx) return;
+    // sirena de dos tonos repetida (tipo alarma), fuerte y llamativa
+    let t=0;
+    for(let i=0;i<4;i++){ pitido(988,t,0.18); pitido(1319,t+0.2,0.18); t+=0.42; }
   }catch(err){}
+}
+function sonarAlarma(){
+  const ctx=ensureAudioCtx();
+  if(ctx){
+    // CLAVE: si está "dormido", suena SOLO cuando termine de despertar (antes se perdía)
+    if(ctx.state==='suspended'){ ctx.resume().then(_tocarSirena).catch(()=>{}); }
+    else { _tocarSirena(); }
+  }
   try{ if(navigator.vibrate) navigator.vibrate([400,150,400,150,400,150,600]); }catch(err){}
 }
 function iniciarAlarma(){
@@ -609,18 +620,21 @@ function renderEstadisticas(){
   const ests=activos(DATA.estudiantes);
   const hoyTxt=new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'});
 
-  // ── 1) Sexo por grado ──
+  // ── 1) Sexo por grado (totales sobre TODOS los estudiantes activos) ──
+  const setG=new Set(DATA.grupos||[]);
   let tN=0,tF=0,tS=0;
+  ests.forEach(e=>{ if(e.sexo==='M')tN++; else if(e.sexo==='F')tF++; else tS++; });
+  const totalGen=ests.length;
   const filasGrado=DATA.grupos.map(g=>{
     const enG=ests.filter(e=>e.grupo===g);
     if(!enG.length) return '';
     const n=enG.filter(e=>e.sexo==='M').length;
     const f=enG.filter(e=>e.sexo==='F').length;
     const s=enG.length-n-f;
-    tN+=n; tF+=f; tS+=s;
     return `<tr><td><b>${g}</b></td><td>${n}</td><td>${f}</td><td>${s?('<span style="color:#E65100">'+s+'</span>'):'0'}</td><td><b>${enG.length}</b></td></tr>`;
   }).join('');
-  const totalGen=tN+tF+tS;
+  const otros=ests.filter(e=>!setG.has(e.grupo));
+  const filaOtros=otros.length?`<tr><td><b>(Sin grupo)</b></td><td>${otros.filter(e=>e.sexo==='M').length}</td><td>${otros.filter(e=>e.sexo==='F').length}</td><td><span style="color:#E65100">${otros.filter(e=>!(e.sexo==='M'||e.sexo==='F')).length}</span></td><td><b>${otros.length}</b></td></tr>`:'';
 
   // ── 2) Rangos de edad ──
   const RANGOS=[
@@ -658,7 +672,7 @@ function renderEstadisticas(){
       <h3>👦👧 Niños y niñas por grado</h3>
       <table class="rtab"><thead><tr><th>Grado</th><th>👦 Niños</th><th>👧 Niñas</th><th>❔ Sin dato</th><th>Total</th></tr></thead>
       <tbody>
-        ${filasGrado||'<tr><td colspan="5" style="color:#888">No hay estudiantes.</td></tr>'}
+        ${filasGrado||''}${filaOtros||(filasGrado?'':'<tr><td colspan="5" style="color:#888">No hay estudiantes.</td></tr>')}
         <tr class="tot"><td>TOTAL FUNDACIÓN</td><td>${tN}</td><td>${tF}</td><td>${tS}</td><td>${totalGen}</td></tr>
       </tbody></table>
     </div>
