@@ -251,6 +251,7 @@ async function entrarConUsuario(user, manual){
   renderControles();
   setVista('registro');
   iniciarListenerLlamados();
+  crearBotonModoComedor();
   return true;
 }
 
@@ -280,7 +281,7 @@ onAuthStateChanged(auth, async (user)=>{
   }
   const b=document.querySelector('.btn-login'); if(b){ b.disabled=false; b.textContent='Ingresar'; }
 });
-window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} detenerAlarma(); ultimoSonado=''; const bn=document.getElementById('llamadoBanner'); if(bn){ bn.className='hidden'; bn.innerHTML=''; } const fl=document.getElementById('llamadoFull'); if(fl){ fl.className='hidden'; fl.innerHTML=''; } try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
+window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} detenerAlarma(); ultimoSonado=''; modoComedor=false; refrescarWake(); const mcb=document.getElementById('modoComedorBtn'); if(mcb) mcb.remove(); const bn=document.getElementById('llamadoBanner'); if(bn){ bn.className='hidden'; bn.innerHTML=''; } const fl=document.getElementById('llamadoFull'); if(fl){ fl.className='hidden'; fl.innerHTML=''; } try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
 window.cambiarGrupo=function(g){grupoSel=g;renderRegistro();};
 window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else if(vista==='inasistencias') iniciarInasistencias(); else if(vista==='edades') renderEdades(); else loadRegistrosDia(fechaSel);};
 window.cambiarFiltroGrupo=function(g){ filtroGrupo=g; if(vista==='reporte') renderReporte(); else if(vista==='inasistencias') renderInasistencias(); else if(vista==='edades') renderEdades(); };
@@ -398,9 +399,45 @@ function iniciarAlarma(){
   detenerAlarma(); alarmaVeces=0; sonarAlarma();
   // repite cada 4 segundos hasta que la profe confirme (máx. ~3 minutos)
   alarmaTimer=setInterval(()=>{ alarmaVeces++; if(alarmaVeces>=45){ detenerAlarma(); return; } sonarAlarma(); },4000);
+  refrescarWake();
 }
-function detenerAlarma(){ if(alarmaTimer){ clearInterval(alarmaTimer); alarmaTimer=null; } }
+function detenerAlarma(){ if(alarmaTimer){ clearInterval(alarmaTimer); alarmaTimer=null; } refrescarWake(); }
 window.probarSonido=function(){ desbloquearAudio(); sonarAlarma(); };
+
+// ── Mantener la pantalla encendida (Wake Lock) durante el comedor ──
+// Evita que el celular apague la pantalla, para que el sonido y el aviso rojo
+// sigan activos. Se sostiene mientras hay un llamado pendiente o mientras la
+// profe active el "modo comedor". No puede PRENDER una pantalla ya apagada.
+let wakeLock=null, modoComedor=false;
+async function refrescarWake(){
+  try{
+    const necesita = modoComedor || !!alarmaTimer;
+    if(necesita && !wakeLock && ('wakeLock' in navigator) && document.visibilityState==='visible'){
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', ()=>{ wakeLock=null; });
+    } else if(!necesita && wakeLock){
+      const wl=wakeLock; wakeLock=null; await wl.release();
+    }
+  }catch(e){ wakeLock=null; }
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') refrescarWake(); });
+window.toggleModoComedor=function(){
+  modoComedor=!modoComedor;
+  const b=document.getElementById('modoComedorBtn');
+  if(b){ b.textContent = modoComedor ? '🍽️ Pantalla encendida ✓' : '🍽️ Mantener pantalla encendida';
+    b.style.background = modoComedor ? '#2E7D32' : '#F57C00'; }
+  if(modoComedor) desbloquearAudio(); // de paso deja listo el sonido
+  refrescarWake();
+};
+function crearBotonModoComedor(){
+  if(document.getElementById('modoComedorBtn') || !esProfe()) return;
+  const b=document.createElement('button'); b.id='modoComedorBtn';
+  b.textContent='🍽️ Mantener pantalla encendida';
+  b.onclick=window.toggleModoComedor;
+  b.title='Actívalo en la hora del almuerzo para no perderte el llamado';
+  b.style.cssText='position:fixed;left:14px;bottom:12px;z-index:9998;background:#F57C00;color:#fff;border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2)';
+  document.body.appendChild(b);
+}
 
 const idLlamado = g => hoyLocal()+'_'+String(g).replace(/\//g,'-');
 function iniciarListenerLlamados(){
