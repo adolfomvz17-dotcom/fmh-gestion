@@ -4,6 +4,12 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>FMH Asistencia — Staging</title>
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#1B50C9"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="FMH Asistencia"/>
+<link rel="apple-touch-icon" href="icon.png"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif}
 :root{--teal:#1B50C9;--teal-d:#123A98;--teal-l:#E8EEFC;--blue:#1A237E;--green:#2E7D32;--red:#C62828;--yellow:#F9A825;--border:#e0e0e0}
@@ -162,6 +168,7 @@ body{background:#f5f7f7;color:#333}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import { getFirestore, collection, getDocs, doc, getDoc, setDoc, updateDoc, serverTimestamp, writeBatch, increment, query, where, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { getMessaging, getToken, isSupported } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-messaging.js";
 
 // ─── STAGING ──────────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -252,6 +259,7 @@ async function entrarConUsuario(user, manual){
   setVista('registro');
   iniciarListenerLlamados();
   crearBotonModoComedor();
+  crearBotonAvisos();
   return true;
 }
 
@@ -281,7 +289,7 @@ onAuthStateChanged(auth, async (user)=>{
   }
   const b=document.querySelector('.btn-login'); if(b){ b.disabled=false; b.textContent='Ingresar'; }
 });
-window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} detenerAlarma(); ultimoSonado=''; modoComedor=false; refrescarWake(); const mcb=document.getElementById('modoComedorBtn'); if(mcb) mcb.remove(); const bn=document.getElementById('llamadoBanner'); if(bn){ bn.className='hidden'; bn.innerHTML=''; } const fl=document.getElementById('llamadoFull'); if(fl){ fl.className='hidden'; fl.innerHTML=''; } try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
+window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} detenerAlarma(); ultimoSonado=''; modoComedor=false; refrescarWake(); const mcb=document.getElementById('modoComedorBtn'); if(mcb) mcb.remove(); const avb=document.getElementById('avisosBtn'); if(avb) avb.remove(); const bn=document.getElementById('llamadoBanner'); if(bn){ bn.className='hidden'; bn.innerHTML=''; } const fl=document.getElementById('llamadoFull'); if(fl){ fl.className='hidden'; fl.innerHTML=''; } try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
 window.cambiarGrupo=function(g){grupoSel=g;renderRegistro();};
 window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else if(vista==='inasistencias') iniciarInasistencias(); else if(vista==='edades') renderEdades(); else loadRegistrosDia(fechaSel);};
 window.cambiarFiltroGrupo=function(g){ filtroGrupo=g; if(vista==='reporte') renderReporte(); else if(vista==='inasistencias') renderInasistencias(); else if(vista==='edades') renderEdades(); };
@@ -439,6 +447,60 @@ function crearBotonModoComedor(){
   document.body.appendChild(b);
 }
 
+// ── AVISOS PUSH (notificación aunque la app esté cerrada / pantalla bloqueada) ──
+const VAPID_KEY='BH0bvN_kE3Su8Pzx0yqQ_mKIzcetCnhhAvOI3gVLrH13MFNRovKM7AEj3watf1l70eYYDuxdwmjZvekk8kqI_rA';
+const NOTIF_SECRET='fmh-comedor-8Kx2p9Qm';
+let messaging=null;
+function marcarBotonAvisos(activo){
+  const b=document.getElementById('avisosBtn'); if(!b) return;
+  b.textContent = activo ? '🔔 Avisos activos ✓' : '🔔 Activar avisos';
+  b.style.background = activo ? '#2E7D32' : '#1B50C9';
+}
+async function guardarToken(token){
+  try{
+    await setDoc(doc(db,'pushTokens',token), {
+      token, email:currentUser.usuario, nombre:currentUser.nombre, rol:currentUser.rol,
+      grupos: (currentUser.rol==='profe' ? (gruposVisibles||[]) : (DATA.grupos||[])),
+      actualizado: serverTimestamp()
+    }, {merge:true});
+  }catch(e){}
+}
+async function activarAvisos(silencioso){
+  try{
+    const soportado = await isSupported().catch(()=>false);
+    if(!soportado || !('serviceWorker' in navigator)){
+      if(!silencioso) alert('Este navegador no permite avisos. En iPhone: primero "Agregar a pantalla de inicio" y abrir desde ahí. En Android usa Chrome.');
+      return;
+    }
+    const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    let perm = Notification.permission;
+    if(perm!=='granted'){ if(silencioso) return; perm = await Notification.requestPermission(); }
+    if(perm!=='granted'){ if(!silencioso) alert('No se activaron los avisos. Tienes que tocar "Permitir".'); marcarBotonAvisos(false); return; }
+    if(!messaging) messaging=getMessaging();
+    const token = await getToken(messaging, { vapidKey:VAPID_KEY, serviceWorkerRegistration:reg });
+    if(!token){ if(!silencioso) alert('No se pudo activar el aviso en este celular.'); return; }
+    await guardarToken(token);
+    localStorage.setItem('fmh_avisos_ok','1');
+    marcarBotonAvisos(true);
+    if(!silencioso) alert('✅ Avisos activados en este celular. Ya te llegarán aunque la app esté cerrada.');
+  }catch(err){ if(!silencioso) alert('No se pudieron activar los avisos: '+err.message); }
+}
+window.activarAvisos=()=>activarAvisos(false);
+function crearBotonAvisos(){
+  if(document.getElementById('avisosBtn') || !esProfe()) return;
+  const b=document.createElement('button'); b.id='avisosBtn';
+  b.onclick=window.activarAvisos;
+  b.style.cssText='position:fixed;left:14px;bottom:58px;z-index:9998;background:#1B50C9;color:#fff;border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2)';
+  document.body.appendChild(b);
+  marcarBotonAvisos(Notification && Notification.permission==='granted' && localStorage.getItem('fmh_avisos_ok')==='1');
+  // si ya dio permiso antes, refresca el token en silencio
+  if(typeof Notification!=='undefined' && Notification.permission==='granted') activarAvisos(true);
+}
+async function enviarPush(grupo){
+  try{ await fetch('/api/notificar', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ grupo, secret:NOTIF_SECRET }) }); }catch(e){ /* si no hay backend aún, no pasa nada */ }
+}
+
 const idLlamado = g => hoyLocal()+'_'+String(g).replace(/\//g,'-');
 function iniciarListenerLlamados(){
   if(unsubLlamados){unsubLlamados();unsubLlamados=null;}
@@ -504,7 +566,7 @@ function renderComedor(){
 }
 window.llamarGrupo=async function(g){
   const hora=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:true});
-  try{ await setDoc(doc(db,'llamados',idLlamado(g)),{ fecha:hoyLocal(), grupo:g, llamadoEn:serverTimestamp(), llamadoHora:hora, llamadoPor:currentUser.nombre, confirmado:false, confirmadoHora:'', confirmadoPor:'' }); }
+  try{ await setDoc(doc(db,'llamados',idLlamado(g)),{ fecha:hoyLocal(), grupo:g, llamadoEn:serverTimestamp(), llamadoHora:hora, llamadoPor:currentUser.nombre, confirmado:false, confirmadoHora:'', confirmadoPor:'' }); enviarPush(g); }
   catch(err){ alert('No se pudo llamar: '+err.message); }
 };
 window.confirmarLlamado=async function(g){
