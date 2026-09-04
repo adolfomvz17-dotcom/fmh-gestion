@@ -208,7 +208,9 @@ async function cargarDatos(){
     getDocs(collection(db,'estudiantes')),
     getDocs(collection(db,'profesoras')),
     getDoc(doc(db,'config','general')),
-    getDocs(collection(db,'registros')),
+    // Solo los registros de HOY (antes leía TODA la historia en cada apertura y
+    // eso disparaba el consumo de la base hasta el límite diario "Quota exceeded").
+    getDocs(query(collection(db,'registros'), where('fecha','==',hoyLocal()))),
   ]);
   DATA.estudiantes=estSnap.docs.map(d=>({id:d.id,...d.data()}));
   DATA.profesoras=profSnap.docs.map(d=>({id:d.id,...d.data()}));
