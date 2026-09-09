@@ -214,7 +214,7 @@ const STAFF = {
 };
 
 // ─── DATOS EN MEMORIA ────────────────────────────────────────────────────────
-window.DATA = { estudiantes:[], profesoras:[], grupos:[], cargos:[], abonos:[] };
+window.DATA = { estudiantes:[], profesoras:[], grupos:[], cargos:[], abonos:[], nominaPersonal:[], nominaCargos:[], nominaPagos:[] };
 let currentUser = null;
 const ANIO = new Date().getFullYear();
 const MES_ACTUAL = new Date().getMonth()+1; // 1..12
@@ -229,6 +229,7 @@ const can = {
   asignarGrupos:     ()=> ['admin','coord'].includes(currentUser?.rol),
   registrarAbono:    ()=> ['admin','coord'].includes(currentUser?.rol),
   verConfig:         ()=> currentUser?.rol==='admin',
+  verNomina:         ()=> currentUser?.rol==='admin',
 };
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -291,6 +292,8 @@ async function cargarDatos(){
   // abonos (historial de pagos)
   const abonosSnap = await getDocs(collection(db,'abonos'));
   DATA.abonos = abonosSnap.docs.map(d=>({id:d.id, ...d.data()}));
+  // nómina (docentes) — solo la ve el admin, pero se carga aquí
+  try{ await refrescarNomina(); }catch(e){ /* si falla, la nómina queda vacía */ }
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
@@ -355,7 +358,9 @@ function buildNav(){
     {section:'General'},{id:'resumen',ico:'📊',label:'Resumen'},
     {section:'Gestión'},{id:'estudiantes',ico:'👦',label:'Estudiantes'},{id:'profesoras',ico:'👩‍🏫',label:'Profesoras'},
     {section:'Finanzas'},{id:'pagos',ico:'💰',label:'Pagos y Deudas'},{id:'reportes',ico:'📄',label:'Reportes'},
+    {section:'Informes'},{id:'estadisticas',ico:'📈',label:'Estadísticas'},
   ];
+  if(can.verNomina()) items.push({section:'Nómina'},{id:'nomina',ico:'💼',label:'Nómina'});
   if(can.verConfig()) items.push({section:'Configuración'},{id:'config',ico:'⚙️',label:'Configuración'});
   nav.innerHTML=items.map(i=>i.section
     ?`<div class="nav-section">${i.section}</div>`
@@ -368,7 +373,7 @@ function navigate(page){
   currentPage=page;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   const el=document.getElementById('nav_'+page); if(el)el.classList.add('active');
-  const titles={resumen:'Resumen',estudiantes:'Estudiantes',profesoras:'Profesoras',pagos:'Pagos y Deudas',reportes:'Reportes',config:'Configuración'};
+  const titles={resumen:'Resumen',estudiantes:'Estudiantes',profesoras:'Profesoras',pagos:'Pagos y Deudas',reportes:'Reportes',estadisticas:'Estadísticas',nomina:'Nómina',config:'Configuración'};
   document.getElementById('pageTitle').textContent=titles[page]||page;
   const c=document.getElementById('mainContent');
   if(page==='resumen') renderResumen(c);
@@ -376,6 +381,8 @@ function navigate(page){
   else if(page==='profesoras') renderProfesoras(c);
   else if(page==='pagos') renderPagos(c);
   else if(page==='reportes') renderReportes(c);
+  else if(page==='estadisticas') renderEstadisticas(c);
+  else if(page==='nomina') renderNomina(c);
   else if(page==='config') renderConfig(c);
   else enConstruccion(c,titles[page]);
 }
@@ -1705,6 +1712,314 @@ function renderRepEstado(b){
   refocusRepBuscar();
 }
 window.selRepEst=function(id){repEst=id;pintarRepTab();};
+
+// ─── ESTADÍSTICAS: niños/niñas por grado + rangos de edad ────────────────────
+function edadAniosEst(f){
+  if(!f) return null;
+  const n=new Date(String(f)+'T00:00:00'); if(isNaN(n)) return null;
+  const h=new Date(); h.setHours(0,0,0,0);
+  let a=h.getFullYear()-n.getFullYear();
+  const mm=h.getMonth()-n.getMonth();
+  if(mm<0 || (mm===0 && h.getDate()<n.getDate())) a--;
+  return a<0?null:a;
+}
+function renderEstadisticas(c){
+  const ests=activos(DATA.estudiantes);
+  const hoyTxt=new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'});
+
+  // Niños/niñas por grado (los totales se cuentan sobre TODOS los estudiantes activos)
+  const _setG=new Set(DATA.grupos||[]);
+  let tN=0,tF=0,tS=0;
+  ests.forEach(e=>{ if(e.sexo==='M')tN++; else if(e.sexo==='F')tF++; else tS++; });
+  const totalGen=ests.length;
+  const filasGrado=(DATA.grupos||[]).map(g=>{
+    const enG=ests.filter(e=>e.grupo===g); if(!enG.length) return '';
+    const n=enG.filter(e=>e.sexo==='M').length, f=enG.filter(e=>e.sexo==='F').length, s=enG.length-n-f;
+    return `<tr><td><b>${g}</b></td><td>${n}</td><td>${f}</td><td>${s?('<span style="color:var(--red)">'+s+'</span>'):'0'}</td><td><b>${enG.length}</b></td></tr>`;
+  }).join('');
+  const _otros=ests.filter(e=>!_setG.has(e.grupo));
+  const filaOtros=_otros.length?`<tr><td><b>(Sin grupo)</b></td><td>${_otros.filter(e=>e.sexo==='M').length}</td><td>${_otros.filter(e=>e.sexo==='F').length}</td><td><span style="color:var(--red)">${_otros.filter(e=>!(e.sexo==='M'||e.sexo==='F')).length}</span></td><td><b>${_otros.length}</b></td></tr>`:'';
+
+  // Rangos de edad
+  const RANGOS=[
+    {lbl:'0 a 4 años',min:0,max:4},{lbl:'5 a 9 años',min:5,max:9},{lbl:'10 a 14 años',min:10,max:14},
+    {lbl:'15 a 19 años',min:15,max:19},{lbl:'20 a 29 años',min:20,max:29},{lbl:'30 años o más',min:30,max:200},
+  ];
+  const conEdad=ests.map(e=>({e,edad:edadAniosEst(e.fechaNacimiento)}));
+  const sinFecha=conEdad.filter(x=>x.edad===null).length;
+  const filasEdad=RANGOS.map(r=>{
+    const grupo=conEdad.filter(x=>x.edad!==null && x.edad>=r.min && x.edad<=r.max);
+    const n=grupo.filter(x=>x.e.sexo==='M').length, f=grupo.filter(x=>x.e.sexo==='F').length;
+    return `<tr><td><b>${r.lbl}</b></td><td>${n}</td><td>${f}</td><td><b>${grupo.length}</b></td></tr>`;
+  }).join('');
+  const edM=conEdad.filter(x=>x.edad!==null&&x.e.sexo==='M').length;
+  const edF=conEdad.filter(x=>x.edad!==null&&x.e.sexo==='F').length;
+  const edT=conEdad.filter(x=>x.edad!==null).length;
+
+  c.innerHTML=`
+    <div class="stats-grid">
+      <div class="stat-card blue"><div class="num">${totalGen}</div><div class="lbl">Total estudiantes</div></div>
+      <div class="stat-card blue"><div class="num">👦 ${tN}</div><div class="lbl">Niños</div></div>
+      <div class="stat-card red"><div class="num">👧 ${tF}</div><div class="lbl">Niñas</div></div>
+      ${tS?`<div class="stat-card yellow"><div class="num">❔ ${tS}</div><div class="lbl">Sin sexo</div></div>`:''}
+    </div>
+    <div class="card">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span class="card-title">👦👧 Niños y niñas por grado</span>
+        <button class="btn btn-pink" style="padding:7px 12px;font-size:12px" onclick="window.print()">🖨️ Imprimir / PDF</button>
+      </div>
+      <table class="responsive">
+        <thead><tr><th>Grado</th><th>👦 Niños</th><th>👧 Niñas</th><th>❔ Sin dato</th><th>Total</th></tr></thead>
+        <tbody>
+          ${filasGrado||''}${filaOtros||(filasGrado?'':'<tr><td colspan="5" style="color:#888">No hay estudiantes.</td></tr>')}
+          <tr style="font-weight:700;background:var(--pink3)"><td>TOTAL FUNDACIÓN</td><td>${tN}</td><td>${tF}</td><td>${tS}</td><td>${totalGen}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">🎂 Estudiantes por rango de edad</span></div>
+      <table class="responsive">
+        <thead><tr><th>Rango de edad</th><th>👦 Niños</th><th>👧 Niñas</th><th>Total</th></tr></thead>
+        <tbody>
+          ${filasEdad}
+          <tr style="font-weight:700;background:var(--pink3)"><td>TOTAL CON FECHA</td><td>${edM}</td><td>${edF}</td><td>${edT}</td></tr>
+        </tbody>
+      </table>
+      <div style="padding:10px 20px;font-size:12px;color:#888">Edad calculada a hoy, ${hoyTxt}.</div>
+    </div>
+    ${sinFecha?`<div class="alert alert-yellow">📅 ${sinFecha} estudiante(s) sin fecha de nacimiento (no cuentan en los rangos de edad).</div>`:''}
+    ${tS?`<div class="alert alert-yellow">👉 ${tS} estudiante(s) sin sexo registrado. Complétalos con el botón 👦👧 Sexo o editándolos.</div>`:''}`;
+}
+
+// ─── NÓMINA (pagos a docentes: sueldos mensuales + reemplazos) — solo admin ───
+let nominaMes = hoyLocal().slice(0,7); // YYYY-MM
+async function refrescarNomina(){
+  const [pSnap,cSnap,gSnap]=await Promise.all([
+    getDocs(collection(db,'nomina_personal')),
+    getDocs(collection(db,'nomina_cargos')),
+    getDocs(collection(db,'nomina_pagos')),
+  ]);
+  DATA.nominaPersonal=pSnap.docs.map(d=>({id:d.id,...d.data()}));
+  DATA.nominaCargos=cSnap.docs.map(d=>({id:d.id,...d.data()}));
+  DATA.nominaPagos=gSnap.docs.map(d=>({id:d.id,...d.data()}));
+}
+const nomActivos=()=>(DATA.nominaPersonal||[]).filter(p=>p.activo!==false).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+const nomSueldo=(pid,ay,am)=>(DATA.nominaCargos||[]).find(c=>c.activo!==false&&c.personalId===pid&&c.anio===ay&&c.mes===am&&c.tipo==='sueldo');
+const nomCargosDe=(ay,am)=>(DATA.nominaCargos||[]).filter(c=>c.activo!==false&&c.anio===ay&&c.mes===am);
+function chipNom(c){const s=estadoCargo(c);const m={pagado:['#e8f5e9','#2e7d32','Pagado'],parcial:['#fff8e1','#f57f17','Parcial'],pendiente:['#ffebee','#c62828','Pendiente']}[s];return `<span style="background:${m[0]};color:${m[1]};padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700">${m[2]}</span>`;}
+
+function renderNomina(c){
+  if(!can.verNomina()){ c.innerHTML=`<div class="lock-banner">🔒 Solo el Presidente y la Psicóloga pueden ver la nómina.</div>`; return; }
+  const [ay,am]=nominaMes.split('-').map(Number);
+  const personal=nomActivos();
+  const cargosMes=nomCargosDe(ay,am);
+  const reemplazos=cargosMes.filter(x=>x.tipo==='reemplazo');
+  const totalMes=cargosMes.reduce((a,x)=>a+(x.valor||0),0);
+  const pendMes=cargosMes.reduce((a,x)=>a+faltaCargo(x),0);
+  const pagadoMes=totalMes-pendMes;
+  const faltanGen=personal.filter(p=>!nomSueldo(p.id,ay,am)&&(p.salario||0)>0).length;
+
+  const filasSueldo=personal.map(p=>{
+    const cg=nomSueldo(p.id,ay,am);
+    const tipoTxt=p.tipo==='catedratico'?'Catedrático':'Planta';
+    if(!cg) return `<tr><td>${p.nombre}</td><td>${tipoTxt}</td><td>${fmt(p.salario||0)}</td><td colspan="3" style="color:#999">${(p.salario||0)>0?'Sin generar':'Sin sueldo asignado'}</td></tr>`;
+    const falta=faltaCargo(cg);
+    const accion = falta>0 ? `<button class="btn btn-pink" style="padding:6px 12px;font-size:13px" onclick="openPagoNom('${cg.id}')">+ Abono</button>` : '✅';
+    const estado = `${chipNom(cg)}${falta>0?` <span style="color:#c62828;font-size:12px">falta ${fmt(falta)}</span>`:''}`;
+    return `<tr><td>${p.nombre}</td><td>${tipoTxt}</td><td>${fmt(cg.valor)}</td><td>${fmt(cg.abonado||0)}</td><td>${estado}</td><td>${accion}</td></tr>`;
+  }).join('');
+
+  const filasReemp=reemplazos.slice().sort((a,b)=>(a.fechaRef||'').localeCompare(b.fechaRef||'')).map(x=>{
+    const falta=faltaCargo(x);
+    const accion = falta>0 ? `<button class="btn btn-pink" style="padding:6px 12px;font-size:13px" onclick="openPagoNom('${x.id}')">+ Abono</button>` : '✅';
+    const estado = `${chipNom(x)}${falta>0?` <span style="color:#c62828;font-size:12px">falta ${fmt(falta)}</span>`:''}`;
+    return `<tr><td>${x.personalNombre}</td><td>${x.nota||''}${x.fechaRef?` · ${x.fechaRef}`:''}</td><td>${fmt(x.valor)}</td><td>${estado}</td><td>${accion}</td></tr>`;
+  }).join('');
+
+  c.innerHTML=`
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <div><label style="font-size:12px;color:#888;display:block;margin-bottom:2px">Mes</label><input type="month" value="${nominaMes}" onchange="cambiarNominaMes(this.value)"/></div>
+      <button class="btn btn-outline" onclick="openPersonal()">👥 Personal</button>
+      <button class="btn btn-outline" onclick="openReemplazo()">🔁 Registrar reemplazo</button>
+      ${faltanGen?`<button class="btn btn-pink" onclick="generarSueldos()">Generar sueldos del mes (${faltanGen})</button>`:''}
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card blue"><div class="num" style="font-size:19px">${fmt(totalMes)}</div><div class="lbl">Total nómina del mes</div></div>
+      <div class="stat-card green"><div class="num" style="font-size:19px">${fmt(pagadoMes)}</div><div class="lbl">Pagado</div></div>
+      <div class="stat-card red"><div class="num" style="font-size:19px">${fmt(pendMes)}</div><div class="lbl">Pendiente por pagar</div></div>
+      <div class="stat-card"><div class="num">${personal.length}</div><div class="lbl">Personal activo</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">💼 Sueldos de ${MESES[am]} ${ay}</span></div>
+      <table class="responsive">
+        <thead><tr><th>Docente</th><th>Tipo</th><th>Sueldo</th><th>Pagado</th><th>Estado</th><th>Acción</th></tr></thead>
+        <tbody>${filasSueldo||'<tr><td colspan="6" style="color:#888">No hay personal. Toca 👥 Personal para agregar o traer profesoras.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">🔁 Reemplazos y extras de ${MESES[am]} ${ay}</span></div>
+      <table class="responsive">
+        <thead><tr><th>Docente</th><th>Motivo / a quién reemplazó</th><th>Valor</th><th>Estado</th><th>Acción</th></tr></thead>
+        <tbody>${filasReemp||'<tr><td colspan="5" style="color:#888">Sin reemplazos este mes. Toca 🔁 Registrar reemplazo.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+window.cambiarNominaMes=function(v){ nominaMes=v||hoyLocal().slice(0,7); navigate('nomina'); };
+
+window.generarSueldos=async function(){
+  const [ay,am]=nominaMes.split('-').map(Number);
+  const faltan=nomActivos().filter(p=>!nomSueldo(p.id,ay,am)&&(p.salario||0)>0);
+  if(!faltan.length) return alert('No hay sueldos por generar este mes. (Revisa que el personal tenga su sueldo asignado en 👥 Personal.)');
+  if(!confirm('Se generarán los sueldos de '+MESES[am]+' '+ay+' para '+faltan.length+' persona(s). ¿Continuar?')) return;
+  try{
+    const batch=writeBatch(db);
+    faltan.forEach(p=>{
+      const id='nc'+Date.now()+'_'+p.id;
+      batch.set(doc(db,'nomina_cargos',id),{ personalId:p.id, personalNombre:p.nombre, anio:ay, mes:am, tipo:'sueldo', etiqueta:'Sueldo '+MESES[am]+' '+ay, valor:p.salario||0, abonado:0, activo:true, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario });
+    });
+    await batch.commit();
+    await refrescarNomina(); navigate('nomina');
+  }catch(err){ alert('No se pudo generar: '+err.message); }
+};
+
+window.openPagoNom=function(cargoId){
+  const cg=DATA.nominaCargos.find(x=>x.id===cargoId); if(!cg) return;
+  const falta=faltaCargo(cg);
+  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal">
+    <div class="modal-header"><span class="modal-title">Pago a ${cg.personalNombre} — ${cg.etiqueta}</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Monto ($)</label><input id="pnMonto" type="number" min="1" value="${falta}"/></div>
+      <div class="form-group"><label>Fecha</label><input id="pnFecha" type="date" value="${hoyLocal()}"/></div>
+      <div class="form-group form-full"><label>Forma de pago</label><select id="pnMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
+      <div class="form-group form-full"><label>Nota (opcional)</label><input id="pnNota" placeholder="Observación…"/></div>
+    </div>
+    <div class="hint" style="margin-top:8px">Falta por pagar: <b>${fmt(falta)}</b></div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+      <button class="btn btn-pink" id="btnPn" onclick="savePagoNom('${cargoId}')">Registrar</button>
+    </div></div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+window.savePagoNom=async function(cargoId){
+  const cg=DATA.nominaCargos.find(x=>x.id===cargoId); if(!cg) return;
+  let monto=parseInt(document.getElementById('pnMonto').value)||0;
+  const fecha=document.getElementById('pnFecha').value||hoyLocal();
+  const metodo=document.getElementById('pnMetodo').value||'efectivo';
+  const nota=(document.getElementById('pnNota').value||'').trim();
+  if(monto<=0) return alert('Ingresa un monto mayor a cero.');
+  const falta=faltaCargo(cg);
+  if(monto>falta){ if(!confirm('El monto ('+fmt(monto)+') supera lo que falta ('+fmt(falta)+'). Se registrará solo '+fmt(falta)+'. ¿Continuar?')) return; monto=falta; }
+  const btn=document.getElementById('btnPn'); btn.disabled=true; btn.textContent='Registrando…';
+  try{
+    const batch=writeBatch(db);
+    batch.update(doc(db,'nomina_cargos',cargoId),{ abonado:increment(monto), modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario });
+    batch.set(doc(db,'nomina_pagos','np'+Date.now()),{ personalId:cg.personalId, personalNombre:cg.personalNombre, cargoId, tipo:cg.tipo, etiqueta:cg.etiqueta, valor:monto, fecha, metodo, nota, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() });
+    await batch.commit();
+    const ov=document.querySelector('.modal-overlay'); if(ov) ov.remove();
+    await refrescarNomina(); navigate('nomina');
+  }catch(err){ alert('No se pudo: '+err.message); btn.disabled=false; btn.textContent='Registrar'; }
+};
+
+window.openReemplazo=function(){
+  const personal=nomActivos();
+  if(!personal.length) return alert('Primero agrega personal en 👥 Personal.');
+  const opts=personal.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal">
+    <div class="modal-header"><span class="modal-title">🔁 Registrar reemplazo</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="form-grid">
+      <div class="form-group form-full"><label>¿Quién hizo el reemplazo?</label><select id="reProf">${opts}</select></div>
+      <div class="form-group"><label>Valor ($)</label><input id="reMonto" type="number" min="1" placeholder="0"/></div>
+      <div class="form-group"><label>Fecha</label><input id="reFecha" type="date" value="${hoyLocal()}"/></div>
+      <div class="form-group form-full"><label>¿A quién reemplazó / motivo?</label><input id="reNota" placeholder="Ej: cubrió a la profe María"/></div>
+      <div class="form-group form-full"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="rePagado" checked style="width:auto"/> Ya se lo pagué</label></div>
+      <div class="form-group form-full"><label>Forma de pago</label><select id="reMetodo"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+      <button class="btn btn-pink" id="btnRe" onclick="saveReemplazo()">Guardar</button>
+    </div></div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+window.saveReemplazo=async function(){
+  const pid=document.getElementById('reProf').value;
+  const p=(DATA.nominaPersonal||[]).find(x=>x.id===pid); if(!p) return;
+  const monto=parseInt(document.getElementById('reMonto').value)||0;
+  const fecha=document.getElementById('reFecha').value||hoyLocal();
+  const nota=(document.getElementById('reNota').value||'').trim();
+  const pagado=document.getElementById('rePagado').checked;
+  const metodo=document.getElementById('reMetodo').value||'efectivo';
+  if(monto<=0) return alert('Ingresa un valor mayor a cero.');
+  const [ay,am]=fecha.split('-').map(Number);
+  const btn=document.getElementById('btnRe'); btn.disabled=true; btn.textContent='Guardando…';
+  try{
+    const cid='nc'+Date.now()+'_r';
+    const batch=writeBatch(db);
+    batch.set(doc(db,'nomina_cargos',cid),{ personalId:pid, personalNombre:p.nombre, anio:ay, mes:am, tipo:'reemplazo', etiqueta:'Reemplazo '+fecha, valor:monto, abonado:pagado?monto:0, activo:true, nota, fechaRef:fecha, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario });
+    if(pagado){ batch.set(doc(db,'nomina_pagos','np'+Date.now()),{ personalId:pid, personalNombre:p.nombre, cargoId:cid, tipo:'reemplazo', etiqueta:'Reemplazo '+fecha, valor:monto, fecha, metodo, nota, registradoPor:currentUser.usuario, creadoEn:serverTimestamp() }); }
+    await batch.commit();
+    nominaMes=fecha.slice(0,7);
+    await refrescarNomina(); navigate('nomina');
+  }catch(err){ alert('No se pudo: '+err.message); btn.disabled=false; btn.textContent='Guardar'; }
+};
+
+window.openPersonal=function(){
+  const lista=(DATA.nominaPersonal||[]).slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const filas=lista.map(p=>`<tr><td>${p.nombre}${p.activo===false?' <span style="color:#c62828;font-size:11px">(inactivo)</span>':''}</td><td>${p.tipo==='catedratico'?'Catedrático':'Planta'}</td><td>${fmt(p.salario||0)}</td><td><button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="openPersonaEdit('${p.id}')">Editar</button></td></tr>`).join('');
+  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal" style="max-width:640px">
+    <div class="modal-header"><span class="modal-title">👥 Personal de nómina</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-pink" onclick="openPersonaEdit('')">➕ Agregar persona</button>
+      <button class="btn btn-outline" onclick="traerProfesoras()">Traer profesoras</button>
+    </div>
+    <table class="responsive"><thead><tr><th>Nombre</th><th>Tipo</th><th>Sueldo mensual</th><th></th></tr></thead>
+    <tbody>${filas||'<tr><td colspan="4" style="color:#888">Aún no hay personal. Agrega o toca "Traer profesoras".</td></tr>'}</tbody></table>
+  </div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+window.openPersonaEdit=function(id){
+  const p=id?(DATA.nominaPersonal||[]).find(x=>x.id===id):{};
+  document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal">
+    <div class="modal-header"><span class="modal-title">${id?'Editar':'Agregar'} persona</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="form-grid">
+      <div class="form-group form-full"><label>Nombre completo</label><input id="peNombre" value="${(p.nombre||'').replace(/"/g,'&quot;')}"/></div>
+      <div class="form-group"><label>Tipo</label><select id="peTipo"><option value="planta" ${p.tipo!=='catedratico'?'selected':''}>Planta</option><option value="catedratico" ${p.tipo==='catedratico'?'selected':''}>Catedrático</option></select></div>
+      <div class="form-group"><label>Sueldo mensual ($)</label><input id="peSalario" type="number" min="0" value="${p.salario||0}"/></div>
+      ${id?`<div class="form-group form-full"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="peActivo" ${p.activo!==false?'checked':''} style="width:auto"/> Activo</label></div>`:''}
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+      <button class="btn btn-pink" id="btnPe" onclick="savePersona('${id||''}')">Guardar</button>
+    </div></div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+window.savePersona=async function(id){
+  const nombre=(document.getElementById('peNombre').value||'').trim();
+  if(!nombre) return alert('Escribe el nombre.');
+  const tipo=document.getElementById('peTipo').value;
+  const salario=parseInt(document.getElementById('peSalario').value)||0;
+  const activo=id?document.getElementById('peActivo').checked:true;
+  const btn=document.getElementById('btnPe'); btn.disabled=true; btn.textContent='Guardando…';
+  try{
+    if(id){ await updateDoc(doc(db,'nomina_personal',id),{ nombre, tipo, salario, activo, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario }); }
+    else{ await setDoc(doc(db,'nomina_personal','per'+Date.now()),{ nombre, tipo, salario, activo:true, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario }); }
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    await refrescarNomina(); navigate('nomina');
+  }catch(err){ alert('No se pudo: '+err.message); btn.disabled=false; btn.textContent='Guardar'; }
+};
+window.traerProfesoras=async function(){
+  const existentes=new Set((DATA.nominaPersonal||[]).map(p=>(p.nombre||'').trim().toLowerCase()));
+  const nuevas=activos(DATA.profesoras).filter(pf=>!existentes.has((pf.nombre||'').trim().toLowerCase()));
+  if(!nuevas.length) return alert('Ya están todas las profesoras en la lista de personal.');
+  if(!confirm('Se agregarán '+nuevas.length+' profesora(s) a la nómina, con sueldo en $0 para que les pongas el valor. ¿Continuar?')) return;
+  try{
+    const batch=writeBatch(db);
+    nuevas.forEach(pf=>{ batch.set(doc(db,'nomina_personal','per'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),{ nombre:pf.nombre, tipo:'planta', salario:0, activo:true, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario }); });
+    await batch.commit();
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+    await refrescarNomina(); openPersonal();
+  }catch(err){ alert('No se pudo: '+err.message); }
+};
 
 // ─── CONFIGURACIÓN (solo Presidente) ─────────────────────────────────────────
 function renderConfig(c){
