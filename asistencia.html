@@ -984,11 +984,28 @@ function cumpleHoy(){
     })
     .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
 }
+// Cumpleaños de las profesoras/personal (la fecha se llena desde la nómina en la app de Pagos).
+function cumpleDocentes(){
+  const hoy=new Date(); hoy.setHours(0,0,0,0);
+  const fechas=[new Date(hoy)];
+  if(hoy.getDay()===1){ const dom=new Date(hoy); dom.setDate(hoy.getDate()-1); fechas.push(dom); const sab=new Date(hoy); sab.setDate(hoy.getDate()-2); fechas.push(sab); }
+  const mmdd=d=>String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const claves=new Set(fechas.map(mmdd));
+  const hoyKey=mmdd(hoy);
+  return activos(DATA.profesoras)
+    .filter(p=>p.fechaNacimiento && claves.has(String(p.fechaNacimiento).slice(5,10)))
+    .map(p=>{ const edad=hoy.getFullYear()-parseInt(String(p.fechaNacimiento).slice(0,4)); return {nombre:p.nombre, cargo:p.cargo||'', edad:(edad>0&&edad<120)?edad:null, esHoy:String(p.fechaNacimiento).slice(5,10)===hoyKey}; })
+    .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+}
 function bannerCumple(){
-  const lista=cumpleHoy();
-  if(!lista.length) return '';
+  const est=cumpleHoy();
+  const doc=cumpleDocentes();
+  if(!est.length && !doc.length) return '';
   const esLunes=new Date().getDay()===1;
-  const items=lista.map(x=>`🎂 <b>${x.nombre}</b> <span style="opacity:.85">(${x.grupo}${x.edad?` · cumple ${x.edad}`:''})</span>${(esLunes&&!x.esHoy)?' <span style="font-size:11px;opacity:.75">— fin de semana</span>':''}`).join('<br>');
+  const marca=x=>(esLunes&&!x.esHoy)?' <span style="font-size:11px;opacity:.75">— fin de semana</span>':'';
+  let items=doc.map(x=>`🎂 <b>${x.nombre}</b> <span style="opacity:.85">(${x.cargo?x.cargo+' · ':''}profe${x.edad?` · cumple ${x.edad}`:''})</span>${marca(x)}`).join('<br>');
+  const itemsEst=est.map(x=>`🎂 <b>${x.nombre}</b> <span style="opacity:.85">(${x.grupo}${x.edad?` · cumple ${x.edad}`:''})</span>${marca(x)}`).join('<br>');
+  if(itemsEst){ items = items ? (items+'<br>'+itemsEst) : itemsEst; }
   const titulo=esLunes?'🎉 Cumpleaños del fin de semana y de hoy':'🎉 ¡Feliz cumpleaños hoy!';
   return `<div class="cumple-banner"><div class="cumple-tit">${titulo}</div><div class="cumple-lista">${items}</div></div>`;
 }

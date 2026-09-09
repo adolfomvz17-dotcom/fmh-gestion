@@ -1821,12 +1821,13 @@ function renderNomina(c){
 
   const filasSueldo=personal.map(p=>{
     const cg=nomSueldo(p.id,ay,am);
-    const tipoTxt=p.tipo==='catedratico'?'Catedrático':'Planta';
-    if(!cg) return `<tr><td>${p.nombre}</td><td>${tipoTxt}</td><td>${fmt(p.salario||0)}</td><td colspan="3" style="color:#999">${(p.salario||0)>0?'Sin generar':'Sin sueldo asignado'}</td></tr>`;
+    const nombreLink=`<a href="#" onclick="openFichaNom('${p.id}');return false" style="color:var(--blue);font-weight:600;text-decoration:none">${p.nombre}</a>`;
+    const cargoTxt=p.cargo||`<span style="color:#bbb">${p.tipo==='catedratico'?'Catedrático':'Planta'}</span>`;
+    if(!cg) return `<tr><td>${nombreLink}</td><td>${cargoTxt}</td><td>${fmt(p.salario||0)}</td><td colspan="3" style="color:#999">${(p.salario||0)>0?'Sin generar':'Sin sueldo asignado'}</td></tr>`;
     const falta=faltaCargo(cg);
     const accion = falta>0 ? `<button class="btn btn-pink" style="padding:6px 12px;font-size:13px" onclick="openPagoNom('${cg.id}')">+ Abono</button>` : '✅';
     const estado = `${chipNom(cg)}${falta>0?` <span style="color:#c62828;font-size:12px">falta ${fmt(falta)}</span>`:''}`;
-    return `<tr><td>${p.nombre}</td><td>${tipoTxt}</td><td>${fmt(cg.valor)}</td><td>${fmt(cg.abonado||0)}</td><td>${estado}</td><td>${accion}</td></tr>`;
+    return `<tr><td>${nombreLink}</td><td>${cargoTxt}</td><td>${fmt(cg.valor)}</td><td>${fmt(cg.abonado||0)}</td><td>${estado}</td><td>${accion}</td></tr>`;
   }).join('');
 
   const filasReemp=reemplazos.slice().sort((a,b)=>(a.fechaRef||'').localeCompare(b.fechaRef||'')).map(x=>{
@@ -1842,6 +1843,7 @@ function renderNomina(c){
       <button class="btn btn-outline" onclick="openPersonal()">👥 Personal</button>
       <button class="btn btn-outline" onclick="openReemplazo()">🔁 Registrar reemplazo</button>
       ${faltanGen?`<button class="btn btn-pink" onclick="generarSueldos()">Generar sueldos del mes (${faltanGen})</button>`:''}
+      <button class="btn btn-outline" onclick="generarSueldosAno()">📅 Generar año</button>
     </div>
     <div class="stats-grid">
       <div class="stat-card blue"><div class="num" style="font-size:19px">${fmt(totalMes)}</div><div class="lbl">Total nómina del mes</div></div>
@@ -1852,7 +1854,7 @@ function renderNomina(c){
     <div class="card">
       <div class="card-header"><span class="card-title">💼 Sueldos de ${MESES[am]} ${ay}</span></div>
       <table class="responsive">
-        <thead><tr><th>Docente</th><th>Tipo</th><th>Sueldo</th><th>Pagado</th><th>Estado</th><th>Acción</th></tr></thead>
+        <thead><tr><th>Docente</th><th>Cargo</th><th>Sueldo</th><th>Pagado</th><th>Estado</th><th>Acción</th></tr></thead>
         <tbody>${filasSueldo||'<tr><td colspan="6" style="color:#888">No hay personal. Toca 👥 Personal para agregar o traer profesoras.</td></tr>'}</tbody>
       </table>
     </div>
@@ -1979,14 +1981,21 @@ window.openPersonal=function(){
 window.openPersonaEdit=function(id){
   const p=id?(DATA.nominaPersonal||[]).find(x=>x.id===id):{};
   document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
-  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal">
+  const esc=s=>(s||'').toString().replace(/"/g,'&quot;');
+  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal" style="max-width:640px">
     <div class="modal-header"><span class="modal-title">${id?'Editar':'Agregar'} persona</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
     <div class="form-grid">
-      <div class="form-group form-full"><label>Nombre completo</label><input id="peNombre" value="${(p.nombre||'').replace(/"/g,'&quot;')}"/></div>
-      <div class="form-group"><label>Tipo</label><select id="peTipo"><option value="planta" ${p.tipo!=='catedratico'?'selected':''}>Planta</option><option value="catedratico" ${p.tipo==='catedratico'?'selected':''}>Catedrático</option></select></div>
+      <div class="form-group form-full"><label>Nombre completo</label><input id="peNombre" value="${esc(p.nombre)}"/></div>
+      <div class="form-group"><label>Cargo</label><input id="peCargo" value="${esc(p.cargo)}" placeholder="Ej: Profe de K3, Música, Coordinadora"/></div>
+      <div class="form-group"><label>Tipo (nómina)</label><select id="peTipo"><option value="planta" ${p.tipo!=='catedratico'?'selected':''}>Planta</option><option value="catedratico" ${p.tipo==='catedratico'?'selected':''}>Catedrático</option></select></div>
       <div class="form-group"><label>Sueldo mensual ($)</label><input id="peSalario" type="number" min="0" value="${p.salario||0}"/></div>
+      <div class="form-group"><label>Fecha de nacimiento</label><input id="peNac" type="date" value="${p.fechaNacimiento||''}"/></div>
+      <div class="form-group"><label>N° de documento</label><input id="peDoc" value="${esc(p.documento)}"/></div>
+      <div class="form-group"><label>Teléfono</label><input id="peTel" value="${esc(p.telefono)}"/></div>
+      <div class="form-group form-full"><label>N° de cuenta (banco)</label><input id="peCuenta" value="${esc(p.cuenta)}" placeholder="Banco y número de cuenta"/></div>
       ${id?`<div class="form-group form-full"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="peActivo" ${p.activo!==false?'checked':''} style="width:auto"/> Activo</label></div>`:''}
     </div>
+    <div class="hint" style="margin-top:8px">La fecha de nacimiento y el cargo también aparecen en el aviso de cumpleaños de la app de Asistencia. El documento, teléfono y cuenta quedan solo aquí (privados).</div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
       <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
       <button class="btn btn-pink" id="btnPe" onclick="savePersona('${id||''}')">Guardar</button>
@@ -1994,15 +2003,29 @@ window.openPersonaEdit=function(id){
   document.body.insertAdjacentHTML('beforeend',html);
 };
 window.savePersona=async function(id){
-  const nombre=(document.getElementById('peNombre').value||'').trim();
+  const g=x=>document.getElementById(x);
+  const nombre=(g('peNombre').value||'').trim();
   if(!nombre) return alert('Escribe el nombre.');
-  const tipo=document.getElementById('peTipo').value;
-  const salario=parseInt(document.getElementById('peSalario').value)||0;
-  const activo=id?document.getElementById('peActivo').checked:true;
-  const btn=document.getElementById('btnPe'); btn.disabled=true; btn.textContent='Guardando…';
+  const datos={
+    nombre, cargo:(g('peCargo').value||'').trim(), tipo:g('peTipo').value,
+    salario:parseInt(g('peSalario').value)||0, fechaNacimiento:g('peNac').value||'',
+    documento:(g('peDoc').value||'').trim(), telefono:(g('peTel').value||'').trim(), cuenta:(g('peCuenta').value||'').trim(),
+    activo:id?g('peActivo').checked:true, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario
+  };
+  const btn=g('btnPe'); btn.disabled=true; btn.textContent='Guardando…';
   try{
-    if(id){ await updateDoc(doc(db,'nomina_personal',id),{ nombre, tipo, salario, activo, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario }); }
-    else{ await setDoc(doc(db,'nomina_personal','per'+Date.now()),{ nombre, tipo, salario, activo:true, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario }); }
+    let pid=id;
+    if(id){ await updateDoc(doc(db,'nomina_personal',id),datos); }
+    else{ pid='per'+Date.now(); await setDoc(doc(db,'nomina_personal',pid),{...datos, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario}); }
+    // Copiar SOLO cumpleaños y cargo a la profesora vinculada (para el aviso en Asistencia). Lo sensible NO se copia.
+    const rec=(DATA.nominaPersonal||[]).find(x=>x.id===pid);
+    let profId = rec && rec.profesoraId;
+    if(!profId){
+      const norm=s=>(s||'').toString().trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+      const pf=(DATA.profesoras||[]).find(x=>norm(x.nombre)===norm(nombre));
+      if(pf){ profId=pf.id; await updateDoc(doc(db,'nomina_personal',pid),{profesoraId:profId}); }
+    }
+    if(profId){ try{ await updateDoc(doc(db,'profesoras',profId),{ fechaNacimiento:datos.fechaNacimiento||'', cargo:datos.cargo||'' }); }catch(e){} }
     document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
     await refrescarNomina(); navigate('nomina');
   }catch(err){ alert('No se pudo: '+err.message); btn.disabled=false; btn.textContent='Guardar'; }
@@ -2014,11 +2037,59 @@ window.traerProfesoras=async function(){
   if(!confirm('Se agregarán '+nuevas.length+' profesora(s) a la nómina, con sueldo en $0 para que les pongas el valor. ¿Continuar?')) return;
   try{
     const batch=writeBatch(db);
-    nuevas.forEach(pf=>{ batch.set(doc(db,'nomina_personal','per'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),{ nombre:pf.nombre, tipo:'planta', salario:0, activo:true, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario }); });
+    nuevas.forEach(pf=>{ batch.set(doc(db,'nomina_personal','per'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),{ nombre:pf.nombre, cargo:pf.cargo||'', tipo:'planta', salario:0, fechaNacimiento:pf.fechaNacimiento||'', documento:'', telefono:'', cuenta:'', activo:true, profesoraId:pf.id, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario }); });
     await batch.commit();
     document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
     await refrescarNomina(); openPersonal();
   }catch(err){ alert('No se pudo: '+err.message); }
+};
+window.generarSueldosAno=async function(){
+  const ay=ANIO;
+  const personal=nomActivos().filter(p=>(p.salario||0)>0);
+  if(!personal.length) return alert('No hay personal con sueldo asignado. Ponles el sueldo en 👥 Personal.');
+  let faltan=0; personal.forEach(p=>{ for(let m=1;m<=12;m++){ if(!nomSueldo(p.id,ay,m)) faltan++; } });
+  if(!faltan) return alert('Los sueldos del año '+ay+' ya están generados.');
+  if(!confirm('Se generarán los sueldos de los 12 meses de '+ay+' para '+personal.length+' persona(s) ('+faltan+' meses nuevos). ¿Continuar?')) return;
+  try{
+    let batch=writeBatch(db), ops=0;
+    for(const p of personal){
+      for(let m=1;m<=12;m++){
+        if(nomSueldo(p.id,ay,m)) continue;
+        batch.set(doc(db,'nomina_cargos','nc'+Date.now()+'_'+p.id+'_'+m),{ personalId:p.id, personalNombre:p.nombre, anio:ay, mes:m, tipo:'sueldo', etiqueta:'Sueldo '+MESES[m]+' '+ay, valor:p.salario||0, abonado:0, activo:true, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario });
+        ops++; if(ops>=400){ await batch.commit(); batch=writeBatch(db); ops=0; }
+      }
+    }
+    if(ops>0) await batch.commit();
+    await refrescarNomina(); navigate('nomina');
+  }catch(err){ alert('No se pudo: '+err.message); }
+};
+window.openFichaNom=function(pid){
+  const p=(DATA.nominaPersonal||[]).find(x=>x.id===pid); if(!p) return;
+  const ay=ANIO;
+  const filas=[];
+  for(let m=1;m<=12;m++){
+    const cg=nomSueldo(p.id,ay,m);
+    if(!cg){ filas.push(`<tr><td>${MESES[m]}</td><td>${fmt(p.salario||0)}</td><td colspan="2" style="color:#999">Sin generar</td></tr>`); continue; }
+    const falta=faltaCargo(cg);
+    const acc=falta>0?`<button class="btn btn-pink" style="padding:5px 10px;font-size:12px" onclick="openPagoNom('${cg.id}')">+ Abono</button>`:'✅';
+    filas.push(`<tr><td>${MESES[m]}</td><td>${fmt(cg.valor)}</td><td>${chipNom(cg)}${falta>0?` <span style="color:#c62828;font-size:12px">falta ${fmt(falta)}</span>`:''}</td><td>${acc}</td></tr>`);
+  }
+  const reemp=(DATA.nominaCargos||[]).filter(c=>c.activo!==false&&c.personalId===p.id&&c.tipo==='reemplazo'&&c.anio===ay).sort((a,b)=>(a.fechaRef||'').localeCompare(b.fechaRef||''));
+  const filasR=reemp.map(c=>{const falta=faltaCargo(c);const acc=falta>0?`<button class="btn btn-pink" style="padding:5px 10px;font-size:12px" onclick="openPagoNom('${c.id}')">+ Abono</button>`:'✅';return `<tr><td>${c.nota||''}${c.fechaRef?` · ${c.fechaRef}`:''}</td><td>${fmt(c.valor)}</td><td>${chipNom(c)}</td><td>${acc}</td></tr>`;}).join('');
+  const cargosAno=(DATA.nominaCargos||[]).filter(c=>c.activo!==false&&c.personalId===p.id&&c.anio===ay);
+  const totAno=cargosAno.reduce((a,c)=>a+(c.valor||0),0);
+  const pendAno=cargosAno.reduce((a,c)=>a+faltaCargo(c),0);
+  const datos=[p.cargo?`💼 ${p.cargo}`:'',p.documento?`🪪 ${p.documento}`:'',p.telefono?`📞 ${p.telefono}`:'',p.cuenta?`🏦 ${p.cuenta}`:'',p.fechaNacimiento?`🎂 ${p.fechaNacimiento}`:''].filter(Boolean).join(' &nbsp;·&nbsp; ');
+  document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal" style="max-width:680px">
+    <div class="modal-header"><span class="modal-title">📋 ${p.nombre}</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div style="font-size:13px;color:#555;margin-bottom:8px">${datos||'<span style="color:#999">Sin datos personales — toca Editar para agregarlos.</span>'}</div>
+    <div style="margin-bottom:12px"><button class="btn btn-outline" style="padding:6px 12px;font-size:13px" onclick="openPersonaEdit('${p.id}')">✏️ Editar datos</button></div>
+    <div style="font-weight:700;color:var(--blue);margin-bottom:6px">Sueldos ${ay} — total ${fmt(totAno)} · pendiente ${fmt(pendAno)}</div>
+    <table class="responsive"><thead><tr><th>Mes</th><th>Sueldo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${filas.join('')}</tbody></table>
+    ${reemp.length?`<div style="font-weight:700;color:var(--blue);margin:14px 0 6px">Reemplazos ${ay}</div><table class="responsive"><thead><tr><th>Motivo</th><th>Valor</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${filasR}</tbody></table>`:''}
+  </div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
 };
 
 // ─── CONFIGURACIÓN (solo Presidente) ─────────────────────────────────────────
