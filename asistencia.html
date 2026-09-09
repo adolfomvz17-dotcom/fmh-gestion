@@ -194,7 +194,7 @@ const STAFF = {
   'creartecoordinacion123@gmail.com': { rol:'coord', nombre:'Coordinadora' },
 };
 
-window.DATA = { estudiantes:[], profesoras:[], grupos:[], registros:[] };
+window.DATA = { estudiantes:[], profesoras:[], grupos:[], registros:[], personal:[] };
 let currentUser=null, gruposVisibles=[], grupoSel='', fechaSel='';
 
 const hoyLocal=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);};
@@ -204,18 +204,21 @@ const regOf=(estId)=>DATA.registros.find(r=>r.id===regId(fechaSel,estId));
 const esProfe=()=>currentUser?.rol==='profe';
 
 async function cargarDatos(){
-  const [estSnap,profSnap,cfgSnap,regSnap]=await Promise.all([
+  const [estSnap,profSnap,cfgSnap,regSnap,perSnap]=await Promise.all([
     getDocs(collection(db,'estudiantes')),
     getDocs(collection(db,'profesoras')),
     getDoc(doc(db,'config','general')),
     // Solo los registros de HOY (antes leía TODA la historia en cada apertura y
     // eso disparaba el consumo de la base hasta el límite diario "Quota exceeded").
     getDocs(query(collection(db,'registros'), where('fecha','==',hoyLocal()))),
+    // Espejo del personal (nombre, cargo, cumpleaños) — se llena desde la nómina en Pagos
+    getDocs(collection(db,'personal_dir')),
   ]);
   DATA.estudiantes=estSnap.docs.map(d=>({id:d.id,...d.data()}));
   DATA.profesoras=profSnap.docs.map(d=>({id:d.id,...d.data()}));
   DATA.grupos=cfgSnap.exists()?(cfgSnap.data().grupos||[]):[];
   DATA.registros=regSnap.docs.map(d=>({id:d.id,...d.data()}));
+  DATA.personal=perSnap.docs.map(d=>({id:d.id,...d.data()}));
 }
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
@@ -688,8 +691,8 @@ function renderEdades(){
   const esAdmin = currentUser && currentUser.rol==='admin';
   let bloqueDoc='';
   if(esAdmin){
-    const docs=activos(DATA.profesoras).filter(p=>p.fechaNacimiento).map(p=>({p,ym:edadYM(p.fechaNacimiento,fechaSel)})).filter(x=>x.ym).sort((a,b)=>(a.p.nombre||'').localeCompare(b.p.nombre||''));
-    const sinFechaDoc=activos(DATA.profesoras).filter(p=>!p.fechaNacimiento).length;
+    const docs=activos(DATA.personal).filter(p=>p.fechaNacimiento).map(p=>({p,ym:edadYM(p.fechaNacimiento,fechaSel)})).filter(x=>x.ym).sort((a,b)=>(a.p.nombre||'').localeCompare(b.p.nombre||''));
+    const sinFechaDoc=activos(DATA.personal).filter(p=>!p.fechaNacimiento).length;
     bloqueDoc=`<div class="repgrupo" style="border:2px solid var(--teal)">
       <h3>👩‍🏫 Docentes y personal</h3>
       <div class="sub">${docs.length} persona(s) · solo administración</div>
@@ -1008,7 +1011,7 @@ function cumpleDocentes(){
   const mmdd=d=>String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   const claves=new Set(fechas.map(mmdd));
   const hoyKey=mmdd(hoy);
-  return activos(DATA.profesoras)
+  return activos(DATA.personal)
     .filter(p=>p.fechaNacimiento && claves.has(String(p.fechaNacimiento).slice(5,10)))
     .map(p=>{ const edad=hoy.getFullYear()-parseInt(String(p.fechaNacimiento).slice(0,4)); return {nombre:p.nombre, cargo:p.cargo||'', edad:(edad>0&&edad<120)?edad:null, esHoy:String(p.fechaNacimiento).slice(5,10)===hoyKey}; })
     .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));

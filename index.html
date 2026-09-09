@@ -214,7 +214,7 @@ const STAFF = {
 };
 
 // ─── DATOS EN MEMORIA ────────────────────────────────────────────────────────
-window.DATA = { estudiantes:[], profesoras:[], grupos:[], cargos:[], abonos:[], nominaPersonal:[], nominaCargos:[], nominaPagos:[] };
+window.DATA = { estudiantes:[], profesoras:[], grupos:[], cargos:[], abonos:[], nominaPersonal:[], nominaCargos:[], nominaPagos:[], personalDir:[] };
 let currentUser = null;
 const ANIO = new Date().getFullYear();
 const MES_ACTUAL = new Date().getMonth()+1; // 1..12
@@ -292,8 +292,8 @@ async function cargarDatos(){
   // abonos (historial de pagos)
   const abonosSnap = await getDocs(collection(db,'abonos'));
   DATA.abonos = abonosSnap.docs.map(d=>({id:d.id, ...d.data()}));
-  // nómina (docentes) — solo la ve el admin, pero se carga aquí
-  try{ await refrescarNomina(); }catch(e){ /* si falla, la nómina queda vacía */ }
+  // nómina (docentes) — SOLO el admin la carga (contiene sueldos; la coordinadora no)
+  if(can.verNomina()){ try{ await refrescarNomina(); }catch(e){ /* si falla, la nómina queda vacía */ } }
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
@@ -1794,14 +1794,29 @@ function renderEstadisticas(c){
 // ─── NÓMINA (pagos a docentes: sueldos mensuales + reemplazos) — solo admin ───
 let nominaMes = hoyLocal().slice(0,7); // YYYY-MM
 async function refrescarNomina(){
-  const [pSnap,cSnap,gSnap]=await Promise.all([
+  const [pSnap,cSnap,gSnap,dSnap]=await Promise.all([
     getDocs(collection(db,'nomina_personal')),
     getDocs(collection(db,'nomina_cargos')),
     getDocs(collection(db,'nomina_pagos')),
+    getDocs(collection(db,'personal_dir')),
   ]);
   DATA.nominaPersonal=pSnap.docs.map(d=>({id:d.id,...d.data()}));
   DATA.nominaCargos=cSnap.docs.map(d=>({id:d.id,...d.data()}));
   DATA.nominaPagos=gSnap.docs.map(d=>({id:d.id,...d.data()}));
+  DATA.personalDir=dSnap.docs.map(d=>({id:d.id,...d.data()}));
+  // Mantener el "espejo" para Asistencia al día (solo lo no sensible; solo escribe diferencias)
+  try{
+    const dirMap={}; DATA.personalDir.forEach(d=>dirMap[d.id]=d);
+    let batch=writeBatch(db), ops=0;
+    DATA.nominaPersonal.forEach(p=>{
+      const want={ nombre:p.nombre||'', cargo:p.cargo||'', fechaNacimiento:p.fechaNacimiento||'', activo:p.activo!==false, tipo:p.tipo||'planta' };
+      const cur=dirMap[p.id];
+      if(!cur || cur.nombre!==want.nombre || cur.cargo!==want.cargo || cur.fechaNacimiento!==want.fechaNacimiento || cur.activo!==want.activo){
+        batch.set(doc(db,'personal_dir',p.id),want); ops++;
+      }
+    });
+    if(ops>0) await batch.commit();
+  }catch(e){}
 }
 const nomActivos=()=>(DATA.nominaPersonal||[]).filter(p=>p.activo!==false).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
 const nomSueldo=(pid,ay,am)=>(DATA.nominaCargos||[]).find(c=>c.activo!==false&&c.personalId===pid&&c.anio===ay&&c.mes===am&&c.tipo==='sueldo');
@@ -1842,6 +1857,7 @@ function renderNomina(c){
       <div><label style="font-size:12px;color:#888;display:block;margin-bottom:2px">Mes</label><input type="month" value="${nominaMes}" onchange="cambiarNominaMes(this.value)"/></div>
       <button class="btn btn-outline" onclick="openPersonal()">👥 Personal</button>
       <button class="btn btn-outline" onclick="openReemplazo()">🔁 Registrar reemplazo</button>
+      <button class="btn btn-outline" onclick="openHistorialNom()">📄 Historial</button>
       ${faltanGen?`<button class="btn btn-pink" onclick="generarSueldos()">Generar sueldos del mes (${faltanGen})</button>`:''}
       <button class="btn btn-outline" onclick="generarSueldosAno()">📅 Generar año</button>
     </div>
@@ -2020,15 +2036,9 @@ window.savePersona=async function(id){
     let pid=id;
     if(id){ await updateDoc(doc(db,'nomina_personal',id),datos); }
     else{ pid='per'+Date.now(); await setDoc(doc(db,'nomina_personal',pid),{...datos, creadoEn:serverTimestamp(), creadoPor:currentUser.usuario}); }
-    // Copiar SOLO cumpleaños y cargo a la profesora vinculada (para el aviso en Asistencia). Lo sensible NO se copia.
-    const rec=(DATA.nominaPersonal||[]).find(x=>x.id===pid);
-    let profId = rec && rec.profesoraId;
-    if(!profId){
-      const norm=s=>(s||'').toString().trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-      const pf=(DATA.profesoras||[]).find(x=>norm(x.nombre)===norm(nombre));
-      if(pf){ profId=pf.id; await updateDoc(doc(db,'nomina_personal',pid),{profesoraId:profId}); }
-    }
-    if(profId){ try{ await updateDoc(doc(db,'profesoras',profId),{ fechaNacimiento:datos.fechaNacimiento||'', cargo:datos.cargo||'' }); }catch(e){} }
+    // Espejo NO sensible para la app de Asistencia (todo el personal aparece allá).
+    // Solo nombre, cargo, cumpleaños y estado — el sueldo, documento y cuenta NO se copian.
+    try{ await setDoc(doc(db,'personal_dir',pid),{ nombre:datos.nombre, cargo:datos.cargo||'', fechaNacimiento:datos.fechaNacimiento||'', activo:datos.activo!==false, tipo:datos.tipo||'planta' }); }catch(e){}
     document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
     await refrescarNomina(); navigate('nomina');
   }catch(err){ alert('No se pudo: '+err.message); btn.disabled=false; btn.textContent='Guardar'; }
@@ -2082,6 +2092,9 @@ window.openFichaNom=function(pid){
   const cargosAno=(DATA.nominaCargos||[]).filter(c=>c.activo!==false&&c.personalId===p.id&&c.anio===ay);
   const totAno=cargosAno.reduce((a,c)=>a+(c.valor||0),0);
   const pendAno=cargosAno.reduce((a,c)=>a+faltaCargo(c),0);
+  const pagosP=(DATA.nominaPagos||[]).filter(x=>x.personalId===p.id && (x.fecha||'').slice(0,4)===String(ay)).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  const filasPagos=pagosP.map(x=>`<tr><td>${x.fecha||''}</td><td>${x.etiqueta||''}${x.nota?` · ${x.nota}`:''}</td><td>${x.metodo==='transferencia'?'🏦 Transf.':'💵 Efectivo'}</td><td style="text-align:right">${fmt(x.valor||0)}</td></tr>`).join('');
+  const totPagadoP=pagosP.reduce((a,x)=>a+(x.valor||0),0);
   const ctaTxt=[p.banco,p.tipoCuenta,p.numeroCuenta||p.cuenta].filter(Boolean).join(' ');
   const datos=[p.cargo?`💼 ${p.cargo}`:'',p.documento?`🪪 ${p.documento}`:'',p.telefono?`📞 ${p.telefono}`:'',ctaTxt?`🏦 ${ctaTxt}`:'',p.fechaNacimiento?`🎂 ${p.fechaNacimiento}`:''].filter(Boolean).join(' &nbsp;·&nbsp; ');
   document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
@@ -2092,6 +2105,27 @@ window.openFichaNom=function(pid){
     <div style="font-weight:700;color:var(--blue);margin-bottom:6px">Sueldos ${ay} — total ${fmt(totAno)} · pendiente ${fmt(pendAno)}</div>
     <table class="responsive"><thead><tr><th>Mes</th><th>Sueldo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${filas.join('')}</tbody></table>
     ${reemp.length?`<div style="font-weight:700;color:var(--blue);margin:14px 0 6px">Reemplazos ${ay}</div><table class="responsive"><thead><tr><th>Motivo</th><th>Valor</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${filasR}</tbody></table>`:''}
+    ${pagosP.length?`<div style="font-weight:700;color:var(--blue);margin:14px 0 6px">💵 Pagos realizados ${ay} — total ${fmt(totPagadoP)}</div><table class="responsive"><thead><tr><th>Fecha</th><th>Concepto</th><th>Forma</th><th style="text-align:right">Valor</th></tr></thead><tbody>${filasPagos}</tbody></table>`:''}
+  </div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+window.openHistorialNom=function(){
+  const ay=ANIO;
+  const pagos=(DATA.nominaPagos||[]).filter(x=>(x.fecha||'').slice(0,4)===String(ay)).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  const total=pagos.reduce((a,x)=>a+(x.valor||0),0);
+  const efec=pagos.filter(x=>x.metodo==='efectivo').reduce((a,x)=>a+(x.valor||0),0);
+  const transf=pagos.filter(x=>x.metodo==='transferencia').reduce((a,x)=>a+(x.valor||0),0);
+  const filas=pagos.map(x=>`<tr><td>${x.fecha||''}</td><td>${x.personalNombre||''}</td><td>${x.etiqueta||(x.tipo==='reemplazo'?'Reemplazo':'Sueldo')}${x.nota?` · ${x.nota}`:''}</td><td>${x.metodo==='transferencia'?'🏦 Transf.':'💵 Efectivo'}</td><td style="text-align:right">${fmt(x.valor||0)}</td></tr>`).join('');
+  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal" style="max-width:780px">
+    <div class="modal-header"><span class="modal-title">📄 Historial de pagos a docentes ${ay}</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="stats-grid" style="margin-bottom:12px">
+      <div class="stat-card blue"><div class="num" style="font-size:18px">${fmt(total)}</div><div class="lbl">Total pagado ${ay}</div></div>
+      <div class="stat-card green"><div class="num" style="font-size:18px">${fmt(efec)}</div><div class="lbl">💵 Efectivo</div></div>
+      <div class="stat-card green"><div class="num" style="font-size:18px">${fmt(transf)}</div><div class="lbl">🏦 Transferencia</div></div>
+      <div class="stat-card"><div class="num">${pagos.length}</div><div class="lbl">N° de pagos</div></div>
+    </div>
+    <table class="responsive"><thead><tr><th>Fecha</th><th>Docente</th><th>Concepto</th><th>Forma</th><th style="text-align:right">Valor</th></tr></thead>
+    <tbody>${filas||'<tr><td colspan="5" style="color:#888">Aún no hay pagos registrados este año.</td></tr>'}</tbody></table>
   </div></div>`;
   document.body.insertAdjacentHTML('beforeend',html);
 };
