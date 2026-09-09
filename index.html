@@ -1992,7 +1992,9 @@ window.openPersonaEdit=function(id){
       <div class="form-group"><label>Fecha de nacimiento</label><input id="peNac" type="date" value="${p.fechaNacimiento||''}"/></div>
       <div class="form-group"><label>N° de documento</label><input id="peDoc" value="${esc(p.documento)}"/></div>
       <div class="form-group"><label>Teléfono</label><input id="peTel" value="${esc(p.telefono)}"/></div>
-      <div class="form-group form-full"><label>N° de cuenta (banco)</label><input id="peCuenta" value="${esc(p.cuenta)}" placeholder="Banco y número de cuenta"/></div>
+      <div class="form-group"><label>Banco</label><input id="peBanco" value="${esc(p.banco)}" placeholder="Ej: Bancolombia, Nequi"/></div>
+      <div class="form-group"><label>Tipo de cuenta</label><select id="peTipoCta"><option value="">—</option><option value="Ahorros" ${p.tipoCuenta==='Ahorros'?'selected':''}>Ahorros</option><option value="Corriente" ${p.tipoCuenta==='Corriente'?'selected':''}>Corriente</option></select></div>
+      <div class="form-group form-full"><label>N° de cuenta</label><input id="peNumCta" value="${esc(p.numeroCuenta||p.cuenta)}" placeholder="Número de la cuenta"/></div>
       ${id?`<div class="form-group form-full"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="peActivo" ${p.activo!==false?'checked':''} style="width:auto"/> Activo</label></div>`:''}
     </div>
     <div class="hint" style="margin-top:8px">La fecha de nacimiento y el cargo también aparecen en el aviso de cumpleaños de la app de Asistencia. El documento, teléfono y cuenta quedan solo aquí (privados).</div>
@@ -2009,7 +2011,8 @@ window.savePersona=async function(id){
   const datos={
     nombre, cargo:(g('peCargo').value||'').trim(), tipo:g('peTipo').value,
     salario:parseInt(g('peSalario').value)||0, fechaNacimiento:g('peNac').value||'',
-    documento:(g('peDoc').value||'').trim(), telefono:(g('peTel').value||'').trim(), cuenta:(g('peCuenta').value||'').trim(),
+    documento:(g('peDoc').value||'').trim(), telefono:(g('peTel').value||'').trim(),
+    banco:(g('peBanco').value||'').trim(), tipoCuenta:g('peTipoCta').value||'', numeroCuenta:(g('peNumCta').value||'').trim(),
     activo:id?g('peActivo').checked:true, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario
   };
   const btn=g('btnPe'); btn.disabled=true; btn.textContent='Guardando…';
@@ -2079,7 +2082,8 @@ window.openFichaNom=function(pid){
   const cargosAno=(DATA.nominaCargos||[]).filter(c=>c.activo!==false&&c.personalId===p.id&&c.anio===ay);
   const totAno=cargosAno.reduce((a,c)=>a+(c.valor||0),0);
   const pendAno=cargosAno.reduce((a,c)=>a+faltaCargo(c),0);
-  const datos=[p.cargo?`💼 ${p.cargo}`:'',p.documento?`🪪 ${p.documento}`:'',p.telefono?`📞 ${p.telefono}`:'',p.cuenta?`🏦 ${p.cuenta}`:'',p.fechaNacimiento?`🎂 ${p.fechaNacimiento}`:''].filter(Boolean).join(' &nbsp;·&nbsp; ');
+  const ctaTxt=[p.banco,p.tipoCuenta,p.numeroCuenta||p.cuenta].filter(Boolean).join(' ');
+  const datos=[p.cargo?`💼 ${p.cargo}`:'',p.documento?`🪪 ${p.documento}`:'',p.telefono?`📞 ${p.telefono}`:'',ctaTxt?`🏦 ${ctaTxt}`:'',p.fechaNacimiento?`🎂 ${p.fechaNacimiento}`:''].filter(Boolean).join(' &nbsp;·&nbsp; ');
   document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
   const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal" style="max-width:680px">
     <div class="modal-header"><span class="modal-title">📋 ${p.nombre}</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
