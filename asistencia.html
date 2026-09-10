@@ -1006,39 +1006,50 @@ function calcHorasCat(entrada,salida){
   let mins=(b[0]*60+b[1])-(a[0]*60+a[1]); if(mins<0) mins+=1440;
   return Math.round((mins/60)*100)/100;
 }
-window.guardarCatReg=async function(catId){
+// Lee del DOM todos los bloques y las novedades de un catedrático para el día
+function gatherDayCat(catId){
+  const entradas=[...document.querySelectorAll(`input[data-cat="${catId}"][data-field="entrada"]`)];
+  const bloques=entradas.map(el=>{
+    const idx=el.dataset.idx;
+    const q=(f,tag)=>document.querySelector(`${tag}[data-cat="${catId}"][data-idx="${idx}"][data-field="${f}"]`)||{};
+    const entrada=el.value||'';
+    const salida=(q('salida','input').value)||'';
+    const tipo=(q('tipo','select').value)||'normal';
+    const horas=calcHorasCat(entrada,salida)||0;
+    return {entrada,salida,tipo,horas};
+  }).filter(b=>b.entrada||b.salida);
+  const novedades=((document.querySelector(`textarea[data-cat="${catId}"][data-field="novedades"]`)||{}).value||'').trim();
+  return {bloques, novedades};
+}
+async function saveDiaCat(catId, bloques, novedades){
   const cat=(DATA.personal||[]).find(p=>p.id===catId);
-  const gv=id=>document.getElementById(id)||{};
-  const entrada=(gv('ce_'+catId).value||'');
-  const salida=(gv('cs_'+catId).value||'');
-  const nota=((gv('cn_'+catId).value||'')).trim();
-  let horas=parseFloat(gv('ch_'+catId).value)||0;
-  const auto=calcHorasCat(entrada,salida); if(auto!==null) horas=auto;
-  const vino = (gv('cv_'+catId).checked) || !!entrada || horas>0;
+  const horas=Math.round(bloques.reduce((a,b)=>a+(Number(b.horas)||0),0)*100)/100;
   const rid=catFecha+'_'+catId;
-  const rec={ catId, catNombre:cat?cat.nombre:'', fecha:catFecha, vino, horaEntrada:entrada, horaSalida:salida, horas, nota, registradoPor:(currentUser&&currentUser.nombre)||'', actualizadoEn:serverTimestamp() };
+  const rec={ catId, catNombre:cat?cat.nombre:'', fecha:catFecha, bloques, novedades:novedades||'', vino:bloques.some(b=>b.entrada||b.salida||b.horas), horas, registradoPor:(currentUser&&currentUser.nombre)||'', actualizadoEn:serverTimestamp() };
   try{ await setDoc(doc(db,'asist_catedraticos',rid),rec); }catch(err){ alert('No se pudo guardar: '+err.message); return; }
   const i=catRegs.findIndex(r=>r.id===rid);
   if(i>=0) catRegs[i]={id:rid,...rec}; else catRegs.push({id:rid,...rec});
   renderCatedraticos();
 }
-// Marcar por QR: 1er escaneo del día = entrada, 2º = salida (con la hora actual)
+window.guardarCatReg=function(catId){ const {bloques,novedades}=gatherDayCat(catId); return saveDiaCat(catId,bloques,novedades); };
+window.catAddBloque=function(catId){ const {bloques,novedades}=gatherDayCat(catId); bloques.push({entrada:'',salida:'',tipo:'normal',horas:0}); return saveDiaCat(catId,bloques,novedades); };
+window.catDelBloque=function(catId,idx){ const {bloques,novedades}=gatherDayCat(catId); bloques.splice(idx,1); return saveDiaCat(catId,bloques,novedades); };
+// Marcar por QR: abre un bloque nuevo (entrada) o cierra el bloque abierto (salida)
 async function marcarPorQR(catId){
   const cat=(DATA.personal||[]).find(p=>p.id===catId);
   if(!cat) return {ok:false,msg:'Ese código no corresponde a nadie registrado.'};
   if(cat.tipo!=='catedratico') return {ok:false,msg:cat.nombre+' no está marcado como Catedrático.'};
   const rid=catFecha+'_'+catId;
-  const ex=catRegs.find(r=>r.id===rid)||{};
+  const ex=catRegs.find(r=>r.id===rid);
+  const bloques=(ex&&Array.isArray(ex.bloques))?ex.bloques.map(b=>({...b})):[];
+  const novedades=(ex&&ex.novedades)||'';
   const now=new Date(); const hhmm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
-  const rec={...ex, catId, catNombre:cat.nombre, fecha:catFecha, vino:true, nota:ex.nota||'', registradoPor:(currentUser&&currentUser.nombre)||'', actualizadoEn:serverTimestamp()};
   let marca;
-  if(!ex.horaEntrada){ rec.horaEntrada=hhmm; marca='Entrada'; }
-  else { rec.horaSalida=hhmm; marca=ex.horaSalida?'Salida (actualizada)':'Salida'; }
-  const auto=calcHorasCat(rec.horaEntrada,rec.horaSalida); rec.horas=(auto!==null)?auto:(ex.horas||0);
-  try{ await setDoc(doc(db,'asist_catedraticos',rid),rec); }catch(err){ return {ok:false,msg:'No se pudo guardar: '+err.message}; }
-  const i=catRegs.findIndex(r=>r.id===rid); if(i>=0) catRegs[i]={id:rid,...rec}; else catRegs.push({id:rid,...rec});
-  if(vista==='catedraticos') renderCatedraticos();
-  return {ok:true,msg:cat.nombre+' — '+marca+' '+hhmm+(rec.horas?(' · '+rec.horas+' h'):'')};
+  const abierto=bloques.find(b=>b.entrada && !b.salida);
+  if(abierto){ abierto.salida=hhmm; abierto.horas=calcHorasCat(abierto.entrada,abierto.salida)||0; marca='Salida bloque '+(bloques.indexOf(abierto)+1)+' '+hhmm+' · '+abierto.horas+'h'; }
+  else { bloques.push({entrada:hhmm,salida:'',tipo:'normal',horas:0}); marca='Entrada bloque '+bloques.length+' '+hhmm; }
+  await saveDiaCat(catId,bloques,novedades);
+  return {ok:true,msg:cat.nombre+' — '+marca};
 }
 window.openEscanerQR=function(){
   if(typeof Html5Qrcode==='undefined'){ alert('El lector de QR no cargó (revisa el internet y refresca la página).'); return; }
@@ -1088,22 +1099,39 @@ function renderCatedraticos(){
   const cats=(DATA.personal||[]).filter(p=>p.activo!==false && p.tipo==='catedratico').sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
   const mes=catFecha.slice(0,7);
   const regDia={}; catRegs.filter(r=>r.fecha===catFecha).forEach(r=>regDia[r.catId]=r);
-  const esc=s=>(s||'').toString().replace(/"/g,'&quot;');
-  const filas=cats.map(p=>{
+  const esc=s=>(s||'').toString().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const tipoOpts=(t)=>`<option value="normal" ${t!=='reposicion'&&t!=='cambio'?'selected':''}>Normal</option><option value="reposicion" ${t==='reposicion'?'selected':''}>Reposición</option><option value="cambio" ${t==='cambio'?'selected':''}>Cambio</option>`;
+  const cards=cats.map(p=>{
     const r=regDia[p.id]||{};
-    return `<tr>
-      <td>${p.nombre}${p.cargo?` <span style="color:#999;font-size:11px">· ${p.cargo}</span>`:''}</td>
-      <td style="text-align:center"><input type="checkbox" id="cv_${p.id}" ${r.vino?'checked':''} onchange="guardarCatReg('${p.id}')" style="width:20px;height:20px"/></td>
-      <td><input type="time" id="ce_${p.id}" value="${r.horaEntrada||''}" onchange="guardarCatReg('${p.id}')" style="width:110px"/></td>
-      <td><input type="time" id="cs_${p.id}" value="${r.horaSalida||''}" onchange="guardarCatReg('${p.id}')" style="width:110px"/></td>
-      <td><input type="number" id="ch_${p.id}" value="${r.horas||''}" min="0" step="0.5" placeholder="0" onchange="guardarCatReg('${p.id}')" style="width:70px"/></td>
-      <td><input type="text" id="cn_${p.id}" value="${esc(r.nota)}" placeholder="Materia / nota" onchange="guardarCatReg('${p.id}')" style="width:100%;min-width:110px"/></td>
-    </tr>`;
+    const bloques=Array.isArray(r.bloques)?r.bloques:[];
+    const totalDia=Math.round(bloques.reduce((a,b)=>a+(Number(b.horas)||0),0)*100)/100;
+    const bloquesHtml = bloques.length ? bloques.map((b,idx)=>`
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+        <span style="font-size:12px;color:#888;width:62px">Bloque ${idx+1}</span>
+        <input type="time" data-cat="${p.id}" data-idx="${idx}" data-field="entrada" value="${b.entrada||''}" onchange="guardarCatReg('${p.id}')" style="width:108px"/>
+        <span style="color:#888">→</span>
+        <input type="time" data-cat="${p.id}" data-idx="${idx}" data-field="salida" value="${b.salida||''}" onchange="guardarCatReg('${p.id}')" style="width:108px"/>
+        <select data-cat="${p.id}" data-idx="${idx}" data-field="tipo" onchange="guardarCatReg('${p.id}')" style="font-size:12px">${tipoOpts(b.tipo)}</select>
+        <span style="font-size:12px;color:#00695C;font-weight:600;min-width:42px">${b.horas?b.horas+' h':''}</span>
+        <button title="Quitar bloque" onclick="catDelBloque('${p.id}',${idx})" style="border:none;background:none;cursor:pointer;font-size:15px">🗑️</button>
+      </div>`).join('') : '<div style="font-size:13px;color:#aaa;margin-bottom:6px">Sin bloques. Agrega uno o escanea el QR.</div>';
+    return `<div class="repgrupo">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">${p.nombre}${p.cargo?` <span style="color:#999;font-size:12px;font-weight:400">· ${p.cargo}</span>`:''}</h3>
+        <span style="font-weight:700;color:var(--blue)">Total del día: ${totalDia} h</span>
+      </div>
+      <div style="margin-top:8px">${bloquesHtml}</div>
+      <button class="vista-btn" style="font-size:13px;padding:5px 10px" onclick="catAddBloque('${p.id}')">➕ Agregar bloque</button>
+      <div style="margin-top:10px"><label style="font-size:12px;color:#888;display:block;margin-bottom:2px">📝 Novedades del día</label>
+        <textarea data-cat="${p.id}" data-field="novedades" onchange="guardarCatReg('${p.id}')" placeholder="Ej: repuso la clase del miércoles; cambió el horario; llegó tarde…" style="width:100%;min-height:44px;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:13px;box-sizing:border-box">${esc(r.novedades)}</textarea>
+      </div>
+    </div>`;
   }).join('');
   const filasR=cats.map(p=>{
     const rr=catRegs.filter(r=>r.catId===p.id && String(r.fecha).slice(0,7)===mes && r.vino);
     const dias=rr.length; const horas=rr.reduce((a,r)=>a+(Number(r.horas)||0),0);
-    return `<tr><td>${p.nombre}</td><td style="text-align:center"><b>${dias}</b></td><td style="text-align:center"><b>${Math.round(horas*100)/100}</b></td></tr>`;
+    const repos=rr.reduce((a,r)=>a+((Array.isArray(r.bloques)?r.bloques:[]).filter(b=>b.tipo==='reposicion'||b.tipo==='cambio').length),0);
+    return `<tr><td>${p.nombre}</td><td style="text-align:center"><b>${dias}</b></td><td style="text-align:center"><b>${Math.round(horas*100)/100}</b></td><td style="text-align:center">${repos||''}</td></tr>`;
   }).join('');
   const fechaTxt=new Date(catFecha+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'});
   const mesTxt=new Date(mes+'-01T00:00:00').toLocaleDateString('es-CO',{month:'long',year:'numeric'});
@@ -1115,15 +1143,13 @@ function renderCatedraticos(){
       <button class="vista-btn" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="window.print()">🖨️ Imprimir</button>
     </div>
     ${cats.length?`
-    <div class="repgrupo">
-      <h3>🧑‍🏫 Asistencia de catedráticos — ${fechaTxt}</h3>
-      <div class="sub">Escanea el QR (entrada y salida) o marca a mano. Se guarda solo. Las horas se calculan de la entrada a la salida.</div>
-      <div style="overflow-x:auto"><table class="rtab"><thead><tr><th>Catedrático</th><th>Vino</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Nota</th></tr></thead><tbody>${filas}</tbody></table></div>
-    </div>
+    <div class="live-tag no-print"><span class="live-dot"></span>${fechaTxt}</div>
+    <div class="sub no-print" style="margin-bottom:10px">Cada catedrático puede tener <b>varios bloques</b> en el día (mañana y tarde). Escanea el QR (abre entrada / cierra salida) o marca a mano. Las horas se calculan solas.</div>
+    ${cards}
     <div class="repgrupo">
       <h3>📅 Resumen de ${mesTxt}</h3>
-      <div class="sub">Días que vino y total de horas del mes — para calcular el pago</div>
-      <table class="rtab"><thead><tr><th>Catedrático</th><th>Días</th><th>Horas</th></tr></thead><tbody>${filasR}</tbody></table>
+      <div class="sub">Días que vino, total de horas y reposiciones/cambios del mes — para calcular el pago</div>
+      <table class="rtab"><thead><tr><th>Catedrático</th><th>Días</th><th>Horas</th><th>Repos./cambios</th></tr></thead><tbody>${filasR}</tbody></table>
     </div>`
     :'<div class="empty">No hay catedráticos. Agrégalos en la app de Pagos → Nómina → 👥 Personal (tipo Catedrático).</div>'}`;
 }
