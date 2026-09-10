@@ -164,6 +164,8 @@ body{background:#f5f7f7;color:#333}
   <div class="content" id="mainContent"><div class="loading">Cargando…</div></div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import { getFirestore, collection, getDocs, doc, getDoc, setDoc, updateDoc, serverTimestamp, writeBatch, increment, query, where, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
@@ -294,7 +296,7 @@ onAuthStateChanged(auth, async (user)=>{
   }
   const b=document.querySelector('.btn-login'); if(b){ b.disabled=false; b.textContent='Ingresar'; }
 });
-window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} detenerAlarma(); ultimoSonado=''; modoComedor=false; refrescarWake(); const mcb=document.getElementById('modoComedorBtn'); if(mcb) mcb.remove(); const avb=document.getElementById('avisosBtn'); if(avb) avb.remove(); const bn=document.getElementById('llamadoBanner'); if(bn){ bn.className='hidden'; bn.innerHTML=''; } const fl=document.getElementById('llamadoFull'); if(fl){ fl.className='hidden'; fl.innerHTML=''; } try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
+window.doLogout=async function(){ if(unsubResumen){unsubResumen();unsubResumen=null;} if(unsubLlamados){unsubLlamados();unsubLlamados=null;} detenerAlarma(); ultimoSonado=''; modoComedor=false; refrescarWake(); try{ if(window._qrScanner) cerrarEscanerQR(); }catch(e){} const mcb=document.getElementById('modoComedorBtn'); if(mcb) mcb.remove(); const avb=document.getElementById('avisosBtn'); if(avb) avb.remove(); const bn=document.getElementById('llamadoBanner'); if(bn){ bn.className='hidden'; bn.innerHTML=''; } const fl=document.getElementById('llamadoFull'); if(fl){ fl.className='hidden'; fl.innerHTML=''; } try{ await signOut(auth); }catch(err){} currentUser=null; cerroSesion=true; document.getElementById('app').classList.add('hidden');document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginUser').value='';document.getElementById('loginPass').value='';};
 window.cambiarGrupo=function(g){grupoSel=g;renderRegistro();};
 window.cambiarFecha=function(f){fechaSel=f||hoyLocal(); if(vista==='resumen') iniciarResumen(); else if(vista==='reporte') iniciarReporte(); else if(vista==='inasistencias') iniciarInasistencias(); else if(vista==='edades') renderEdades(); else loadRegistrosDia(fechaSel);};
 window.cambiarFiltroGrupo=function(g){ filtroGrupo=g; if(vista==='reporte') renderReporte(); else if(vista==='inasistencias') renderInasistencias(); else if(vista==='edades') renderEdades(); };
@@ -360,6 +362,7 @@ window.setVista=function(v){
   vista=v;
   if(unsubResumen){unsubResumen();unsubResumen=null;}
   renderControles();
+  if(v!=='catedraticos' && window._qrScanner){ try{ cerrarEscanerQR(); }catch(e){} }
   if(v==='comedor') renderComedor(); else if(v==='catedraticos') iniciarCatedraticos(); else if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='inasistencias') iniciarInasistencias(); else if(v==='mensual') iniciarMensual(); else if(v==='edades') iniciarEdades(); else if(v==='estadisticas') iniciarEstadisticas(); else loadRegistrosDia(fechaSel);
 };
 
@@ -997,18 +1000,89 @@ window.cambiarCatFecha=function(v){
   const antes=catFecha.slice(0,7); catFecha=v||hoyLocal();
   if(catFecha.slice(0,7)!==antes) iniciarCatedraticos(); else renderCatedraticos();
 };
+function calcHorasCat(entrada,salida){
+  if(!entrada||!salida) return null;
+  const a=entrada.split(':').map(Number), b=salida.split(':').map(Number);
+  let mins=(b[0]*60+b[1])-(a[0]*60+a[1]); if(mins<0) mins+=1440;
+  return Math.round((mins/60)*100)/100;
+}
 window.guardarCatReg=async function(catId){
   const cat=(DATA.personal||[]).find(p=>p.id===catId);
-  const vino=(document.getElementById('cv_'+catId)||{}).checked||false;
-  const horas=parseFloat((document.getElementById('ch_'+catId)||{}).value)||0;
-  const nota=((document.getElementById('cn_'+catId)||{}).value||'').trim();
+  const gv=id=>document.getElementById(id)||{};
+  const entrada=(gv('ce_'+catId).value||'');
+  const salida=(gv('cs_'+catId).value||'');
+  const nota=((gv('cn_'+catId).value||'')).trim();
+  let horas=parseFloat(gv('ch_'+catId).value)||0;
+  const auto=calcHorasCat(entrada,salida); if(auto!==null) horas=auto;
+  const vino = (gv('cv_'+catId).checked) || !!entrada || horas>0;
   const rid=catFecha+'_'+catId;
-  const rec={ catId, catNombre:cat?cat.nombre:'', fecha:catFecha, vino, horas, nota, registradoPor:(currentUser&&currentUser.nombre)||'', actualizadoEn:serverTimestamp() };
+  const rec={ catId, catNombre:cat?cat.nombre:'', fecha:catFecha, vino, horaEntrada:entrada, horaSalida:salida, horas, nota, registradoPor:(currentUser&&currentUser.nombre)||'', actualizadoEn:serverTimestamp() };
   try{ await setDoc(doc(db,'asist_catedraticos',rid),rec); }catch(err){ alert('No se pudo guardar: '+err.message); return; }
   const i=catRegs.findIndex(r=>r.id===rid);
   if(i>=0) catRegs[i]={id:rid,...rec}; else catRegs.push({id:rid,...rec});
   renderCatedraticos();
 }
+// Marcar por QR: 1er escaneo del día = entrada, 2º = salida (con la hora actual)
+async function marcarPorQR(catId){
+  const cat=(DATA.personal||[]).find(p=>p.id===catId);
+  if(!cat) return {ok:false,msg:'Ese código no corresponde a nadie registrado.'};
+  if(cat.tipo!=='catedratico') return {ok:false,msg:cat.nombre+' no está marcado como Catedrático.'};
+  const rid=catFecha+'_'+catId;
+  const ex=catRegs.find(r=>r.id===rid)||{};
+  const now=new Date(); const hhmm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const rec={...ex, catId, catNombre:cat.nombre, fecha:catFecha, vino:true, nota:ex.nota||'', registradoPor:(currentUser&&currentUser.nombre)||'', actualizadoEn:serverTimestamp()};
+  let marca;
+  if(!ex.horaEntrada){ rec.horaEntrada=hhmm; marca='Entrada'; }
+  else { rec.horaSalida=hhmm; marca=ex.horaSalida?'Salida (actualizada)':'Salida'; }
+  const auto=calcHorasCat(rec.horaEntrada,rec.horaSalida); rec.horas=(auto!==null)?auto:(ex.horas||0);
+  try{ await setDoc(doc(db,'asist_catedraticos',rid),rec); }catch(err){ return {ok:false,msg:'No se pudo guardar: '+err.message}; }
+  const i=catRegs.findIndex(r=>r.id===rid); if(i>=0) catRegs[i]={id:rid,...rec}; else catRegs.push({id:rid,...rec});
+  if(vista==='catedraticos') renderCatedraticos();
+  return {ok:true,msg:cat.nombre+' — '+marca+' '+hhmm+(rec.horas?(' · '+rec.horas+' h'):'')};
+}
+window.openEscanerQR=function(){
+  if(typeof Html5Qrcode==='undefined'){ alert('El lector de QR no cargó (revisa el internet y refresca la página).'); return; }
+  const html=`<div class="modal-overlay" id="qrScanOverlay" onclick="if(event.target===this)cerrarEscanerQR()"><div class="modal" style="max-width:440px">
+    <div class="modal-header"><span class="modal-title">📷 Escanear catedrático</span><button class="modal-close" onclick="cerrarEscanerQR()">✕</button></div>
+    <div style="font-size:13px;color:#666;margin-bottom:8px">Apunta la cámara al código del catedrático. Día: <b>${catFecha}</b>.</div>
+    <div id="qrReader" style="width:100%"></div>
+    <div id="qrScanMsg" style="margin-top:10px;font-weight:600;min-height:22px"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="vista-btn" onclick="cerrarEscanerQR()">Cerrar</button></div>
+  </div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+  const scanner=new Html5Qrcode('qrReader'); window._qrScanner=scanner;
+  let ultimo={t:'',ts:0};
+  scanner.start({facingMode:'environment'},{fps:10,qrbox:230}, async (text)=>{
+    const ahora=Date.now();
+    if(text===ultimo.t && ahora-ultimo.ts<4000) return; // evita doble marca del mismo código
+    ultimo={t:text,ts:ahora};
+    const msg=document.getElementById('qrScanMsg'); if(!msg) return;
+    if(!/^FMHCAT:/.test(text)){ msg.style.color='#E65100'; msg.textContent='⚠️ Ese no es un código de la fundación.'; return; }
+    const res=await marcarPorQR(text.slice(7));
+    msg.style.color=res.ok?'#2E7D32':'#C62828';
+    msg.textContent=(res.ok?'✅ ':'⚠️ ')+res.msg;
+  }, ()=>{}).catch(err=>{
+    const msg=document.getElementById('qrScanMsg'); if(msg){ msg.style.color='#C62828'; msg.textContent='No se pudo abrir la cámara. Dale permiso de cámara al navegador e intenta de nuevo.'; }
+  });
+};
+window.cerrarEscanerQR=function(){
+  try{ if(window._qrScanner){ window._qrScanner.stop().then(()=>{ try{window._qrScanner.clear();}catch(e){} window._qrScanner=null; }).catch(()=>{ window._qrScanner=null; }); } }catch(e){}
+  const ov=document.getElementById('qrScanOverlay'); if(ov) ov.remove();
+};
+window.openCodigosQR=function(){
+  if(typeof QRCode==='undefined'){ alert('El generador de QR no cargó (revisa el internet y refresca).'); return; }
+  const cats=(DATA.personal||[]).filter(p=>p.activo!==false && p.tipo==='catedratico').sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  if(!cats.length){ alert('No hay catedráticos. Agrégalos en Pagos → Nómina → Personal (tipo Catedrático).'); return; }
+  const tarjetas=cats.map(c=>`<div style="border:1px solid #ddd;border-radius:12px;padding:14px;text-align:center;break-inside:avoid"><div id="qr_${c.id}" style="display:flex;justify-content:center"></div><div style="font-weight:700;margin-top:8px">${c.nombre}</div><div style="font-size:12px;color:#888">${c.cargo||'Catedrático'}</div></div>`).join('');
+  const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal" style="max-width:640px">
+    <div class="modal-header"><span class="modal-title">🎫 Códigos QR de catedráticos</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+    <div class="no-print" style="font-size:13px;color:#666;margin-bottom:10px">Imprime esta hoja o recorta cada código y dáselo a su catedrático. Con él marcas su entrada y salida escaneando.</div>
+    <div class="no-print" style="margin-bottom:10px"><button class="vista-btn" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="window.print()">🖨️ Imprimir</button></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px">${tarjetas}</div>
+  </div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+  cats.forEach(c=>{ const el=document.getElementById('qr_'+c.id); if(el) new QRCode(el,{text:'FMHCAT:'+c.id,width:150,height:150}); });
+};
 function renderCatedraticos(){
   const c=document.getElementById('mainContent');
   const cats=(DATA.personal||[]).filter(p=>p.activo!==false && p.tipo==='catedratico').sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
@@ -1020,27 +1094,31 @@ function renderCatedraticos(){
     return `<tr>
       <td>${p.nombre}${p.cargo?` <span style="color:#999;font-size:11px">· ${p.cargo}</span>`:''}</td>
       <td style="text-align:center"><input type="checkbox" id="cv_${p.id}" ${r.vino?'checked':''} onchange="guardarCatReg('${p.id}')" style="width:20px;height:20px"/></td>
+      <td><input type="time" id="ce_${p.id}" value="${r.horaEntrada||''}" onchange="guardarCatReg('${p.id}')" style="width:110px"/></td>
+      <td><input type="time" id="cs_${p.id}" value="${r.horaSalida||''}" onchange="guardarCatReg('${p.id}')" style="width:110px"/></td>
       <td><input type="number" id="ch_${p.id}" value="${r.horas||''}" min="0" step="0.5" placeholder="0" onchange="guardarCatReg('${p.id}')" style="width:70px"/></td>
-      <td><input type="text" id="cn_${p.id}" value="${esc(r.nota)}" placeholder="Materia / nota" onchange="guardarCatReg('${p.id}')" style="width:100%;min-width:120px"/></td>
+      <td><input type="text" id="cn_${p.id}" value="${esc(r.nota)}" placeholder="Materia / nota" onchange="guardarCatReg('${p.id}')" style="width:100%;min-width:110px"/></td>
     </tr>`;
   }).join('');
   const filasR=cats.map(p=>{
     const rr=catRegs.filter(r=>r.catId===p.id && String(r.fecha).slice(0,7)===mes && r.vino);
     const dias=rr.length; const horas=rr.reduce((a,r)=>a+(Number(r.horas)||0),0);
-    return `<tr><td>${p.nombre}</td><td style="text-align:center"><b>${dias}</b></td><td style="text-align:center"><b>${horas}</b></td></tr>`;
+    return `<tr><td>${p.nombre}</td><td style="text-align:center"><b>${dias}</b></td><td style="text-align:center"><b>${Math.round(horas*100)/100}</b></td></tr>`;
   }).join('');
   const fechaTxt=new Date(catFecha+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'});
   const mesTxt=new Date(mes+'-01T00:00:00').toLocaleDateString('es-CO',{month:'long',year:'numeric'});
   c.innerHTML=`
-    <div class="no-print" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+    <div class="no-print" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
       <div><label style="font-size:12px;color:#888;display:block;margin-bottom:2px">Día</label><input type="date" value="${catFecha}" max="${hoyLocal()}" onchange="cambiarCatFecha(this.value)"/></div>
-      <button class="vista-btn" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="window.print()">🖨️ Imprimir / PDF</button>
+      <button class="vista-btn" style="background:#1B50C9;color:#fff;border-color:#1B50C9" onclick="openEscanerQR()">📷 Escanear</button>
+      <button class="vista-btn" onclick="openCodigosQR()">🎫 Códigos QR</button>
+      <button class="vista-btn" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="window.print()">🖨️ Imprimir</button>
     </div>
     ${cats.length?`
     <div class="repgrupo">
       <h3>🧑‍🏫 Asistencia de catedráticos — ${fechaTxt}</h3>
-      <div class="sub">Marca quién vino, cuántas horas y una nota. Se guarda solo.</div>
-      <table class="rtab"><thead><tr><th>Catedrático</th><th>Vino</th><th>Horas</th><th>Nota</th></tr></thead><tbody>${filas}</tbody></table>
+      <div class="sub">Escanea el QR (entrada y salida) o marca a mano. Se guarda solo. Las horas se calculan de la entrada a la salida.</div>
+      <div style="overflow-x:auto"><table class="rtab"><thead><tr><th>Catedrático</th><th>Vino</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Nota</th></tr></thead><tbody>${filas}</tbody></table></div>
     </div>
     <div class="repgrupo">
       <h3>📅 Resumen de ${mesTxt}</h3>
