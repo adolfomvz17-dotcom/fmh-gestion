@@ -2011,6 +2011,7 @@ window.openPersonaEdit=function(id){
       <div class="form-group"><label>Cargo</label><input id="peCargo" value="${esc(p.cargo)}" placeholder="Ej: Profe de K3, Música, Coordinadora"/></div>
       <div class="form-group"><label>Tipo (nómina)</label><select id="peTipo"><option value="planta" ${p.tipo!=='catedratico'?'selected':''}>Planta</option><option value="catedratico" ${p.tipo==='catedratico'?'selected':''}>Catedrático</option></select></div>
       <div class="form-group"><label>Sueldo mensual ($)</label><input id="peSalario" type="number" min="0" value="${p.salario||0}"/></div>
+      <div class="form-group"><label>Valor por hora ($)</label><input id="peValorHora" type="number" min="0" value="${p.valorHora||0}"/><span class="hint">Para catedráticos: pago sugerido = horas × este valor.</span></div>
       <div class="form-group"><label>Fecha de nacimiento</label><input id="peNac" type="date" value="${p.fechaNacimiento||''}"/></div>
       <div class="form-group"><label>N° de documento</label><input id="peDoc" value="${esc(p.documento)}"/></div>
       <div class="form-group"><label>Teléfono</label><input id="peTel" value="${esc(p.telefono)}"/></div>
@@ -2032,7 +2033,7 @@ window.savePersona=async function(id){
   if(!nombre) return alert('Escribe el nombre.');
   const datos={
     nombre, cargo:(g('peCargo').value||'').trim(), tipo:g('peTipo').value,
-    salario:parseInt(g('peSalario').value)||0, fechaNacimiento:g('peNac').value||'',
+    salario:parseInt(g('peSalario').value)||0, valorHora:parseInt(g('peValorHora').value)||0, fechaNacimiento:g('peNac').value||'',
     documento:(g('peDoc').value||'').trim(), telefono:(g('peTel').value||'').trim(),
     banco:(g('peBanco').value||'').trim(), tipoCuenta:g('peTipoCta').value||'', numeroCuenta:(g('peNumCta').value||'').trim(),
     activo:id?g('peActivo').checked:true, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario
@@ -2124,8 +2125,28 @@ window.openFichaNom=function(pid){
     <table class="responsive"><thead><tr><th>Mes</th><th>Sueldo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${filas.join('')}</tbody></table>
     ${reemp.length?`<div style="font-weight:700;color:var(--blue);margin:14px 0 6px">Reemplazos ${ay}</div><table class="responsive"><thead><tr><th>Motivo</th><th>Valor</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${filasR}</tbody></table>`:''}
     ${pagosP.length?`<div style="font-weight:700;color:var(--blue);margin:14px 0 6px">💵 Pagos realizados ${ay} — total ${fmt(totPagadoP)}</div><table class="responsive"><thead><tr><th>Fecha</th><th>Concepto</th><th>Forma</th><th style="text-align:right">Valor</th></tr></thead><tbody>${filasPagos}</tbody></table>`:''}
+    ${p.tipo==='catedratico'?'<div id="fichaHoras" style="margin-top:14px"></div>':''}
   </div></div>`;
   document.body.insertAdjacentHTML('beforeend',html);
+  if(p.tipo==='catedratico') cargarHorasCat(p.id, p.valorHora||0);
+};
+window.cargarHorasCat=async function(catId, valorHora){
+  const cont=document.getElementById('fichaHoras'); if(!cont) return;
+  cont.innerHTML='<div style="color:#888;font-size:13px">Cargando horas trabajadas…</div>';
+  let regs=[];
+  try{ const snap=await getDocs(collection(db,'asist_catedraticos')); regs=snap.docs.map(d=>d.data()).filter(r=>r.catId===catId); }
+  catch(err){ cont.innerHTML='<div style="color:#c62828;font-size:13px">No se pudieron cargar las horas: '+err.message+'</div>'; return; }
+  const ay=ANIO, porMes={};
+  regs.forEach(r=>{ const f=String(r.fecha||''); if(f.slice(0,4)!==String(ay)) return; const mm=parseInt(f.slice(5,7)); if(!mm) return; porMes[mm]=porMes[mm]||{horas:0,dias:0}; porMes[mm].horas+=Number(r.horas)||0; if(r.vino) porMes[mm].dias++; });
+  const meses=Object.keys(porMes).map(Number).sort((a,b)=>a-b);
+  if(!meses.length){ cont.innerHTML=`<div style="font-weight:700;color:var(--blue);margin-bottom:6px">⏱️ Horas trabajadas ${ay}</div><div style="color:#888;font-size:13px">Aún no hay asistencia registrada. Se marca en la app de Asistencia → 🧑‍🏫 Catedráticos.</div>`; return; }
+  let totH=0, totV=0;
+  const filas=meses.map(m=>{ const h=Math.round(porMes[m].horas*100)/100; const v=Math.round(h*(valorHora||0)); totH+=h; totV+=v; return `<tr><td>${MESES[m]}</td><td style="text-align:center">${porMes[m].dias}</td><td style="text-align:center">${h}</td><td style="text-align:right">${valorHora?fmt(v):'—'}</td></tr>`; }).join('');
+  cont.innerHTML=`<div style="font-weight:700;color:var(--blue);margin-bottom:6px">⏱️ Horas trabajadas y pago sugerido ${ay}${valorHora?(' · '+fmt(valorHora)+'/hora'):''}</div>
+    ${valorHora?'':'<div class="alert alert-yellow" style="margin-bottom:8px">Ponle el <b>Valor por hora</b> a este catedrático (botón ✏️ Editar) para ver el pago sugerido.</div>'}
+    <table class="responsive"><thead><tr><th>Mes</th><th>Días</th><th>Horas</th><th style="text-align:right">Pago sugerido</th></tr></thead>
+    <tbody>${filas}<tr style="font-weight:700;background:var(--pink3)"><td>TOTAL ${ay}</td><td style="text-align:center">—</td><td style="text-align:center">${Math.round(totH*100)/100}</td><td style="text-align:right">${valorHora?fmt(totV):'—'}</td></tr></tbody></table>
+    <div class="hint" style="margin-top:6px">El pago sugerido (horas × valor hora) es una guía; tú decides el pago final y lo registras arriba con "+ Abono".</div>`;
 };
 window.openHistorialNom=function(){
   const ay=ANIO;
