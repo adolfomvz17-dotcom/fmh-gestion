@@ -313,7 +313,7 @@ async function loadRegistrosDia(fecha){
 }
 
 // ─── BARRA DE CONTROLES Y VISTAS ──────────────────────────────────────────────
-let vista='registro', unsubResumen=null, regDelDia=[], filtroGrupo='', buscarNombre='', mesSel=hoyLocal().slice(0,7), regDelMes=[], llamadosHoy={}, unsubLlamados=null;
+let vista='registro', unsubResumen=null, regDelDia=[], filtroGrupo='', buscarNombre='', mesSel=hoyLocal().slice(0,7), regDelMes=[], llamadosHoy={}, unsubLlamados=null, catFecha=hoyLocal(), catRegs=[];
 const matchN = e => { const q=(buscarNombre||'').trim().toLowerCase(); return !q || (e.nombre||'').toLowerCase().includes(q); };
 
 function renderControles(){
@@ -322,6 +322,7 @@ function renderControles(){
   const navHtml = verResumen ? `<div class="vista-nav">
       <button class="vista-btn" id="vbReg" onclick="setVista('registro')">📋 Registro</button>
       <button class="vista-btn" id="vbCom" onclick="setVista('comedor')">🔔 Comedor</button>
+      <button class="vista-btn" id="vbCat" onclick="setVista('catedraticos')">🧑‍🏫 Catedráticos</button>
       <button class="vista-btn" id="vbRes" onclick="setVista('resumen')">📊 Resumen</button>
       <button class="vista-btn" id="vbRep" onclick="setVista('reporte')">🖨️ Reporte diario</button>
       <button class="vista-btn" id="vbIna" onclick="setVista('inasistencias')">🚫 Inasistencias</button>
@@ -352,14 +353,14 @@ function renderControles(){
     buscarHtml=`<div style="flex:1;min-width:150px"><label>Buscar por nombre</label><input type="text" id="buscarNombre" placeholder="🔎 Nombre…" value="${buscarNombre}" oninput="cambiarBuscar(this.value)"/></div>`;
   }
   bar.innerHTML=navHtml+grupoHtml+fechaHtml+buscarHtml;
-  if(verResumen){ const map={registro:'vbReg',comedor:'vbCom',resumen:'vbRes',reporte:'vbRep',inasistencias:'vbIna',mensual:'vbMes',edades:'vbEda',estadisticas:'vbEst'}; const el=document.getElementById(map[vista]); if(el) el.classList.add('active'); }
+  if(verResumen){ const map={registro:'vbReg',comedor:'vbCom',catedraticos:'vbCat',resumen:'vbRes',reporte:'vbRep',inasistencias:'vbIna',mensual:'vbMes',edades:'vbEda',estadisticas:'vbEst'}; const el=document.getElementById(map[vista]); if(el) el.classList.add('active'); }
 }
 
 window.setVista=function(v){
   vista=v;
   if(unsubResumen){unsubResumen();unsubResumen=null;}
   renderControles();
-  if(v==='comedor') renderComedor(); else if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='inasistencias') iniciarInasistencias(); else if(v==='mensual') iniciarMensual(); else if(v==='edades') iniciarEdades(); else if(v==='estadisticas') iniciarEstadisticas(); else loadRegistrosDia(fechaSel);
+  if(v==='comedor') renderComedor(); else if(v==='catedraticos') iniciarCatedraticos(); else if(v==='resumen') iniciarResumen(); else if(v==='reporte') iniciarReporte(); else if(v==='inasistencias') iniciarInasistencias(); else if(v==='mensual') iniciarMensual(); else if(v==='edades') iniciarEdades(); else if(v==='estadisticas') iniciarEstadisticas(); else loadRegistrosDia(fechaSel);
 };
 
 // ─── LLAMADO AL COMEDOR (coordinación llama · la profesora confirma) ─────────
@@ -982,6 +983,73 @@ function renderReporte(){
     <div class="almcount">🍽️ Almuerzos del día: ${totalAlm} &nbsp;·&nbsp; 👦 Asistencia: ${totalAsist} de ${totalEst}</div>
     ${bloques||'<div class="empty">No hay estudiantes registrados.</div>'}`;
 }
+// ─── ASISTENCIA DE CATEDRÁTICOS (solo admin/coord: día + horas para el pago) ───
+async function iniciarCatedraticos(){
+  const c=document.getElementById('mainContent'); c.innerHTML='<div class="loading">Cargando…</div>';
+  const mes=catFecha.slice(0,7);
+  try{
+    const snap=await getDocs(query(collection(db,'asist_catedraticos'), where('fecha','>=',mes+'-01'), where('fecha','<=',mes+'-31')));
+    catRegs=snap.docs.map(d=>({id:d.id,...d.data()}));
+  }catch(err){ catRegs=[]; }
+  if(vista==='catedraticos') renderCatedraticos();
+}
+window.cambiarCatFecha=function(v){
+  const antes=catFecha.slice(0,7); catFecha=v||hoyLocal();
+  if(catFecha.slice(0,7)!==antes) iniciarCatedraticos(); else renderCatedraticos();
+};
+window.guardarCatReg=async function(catId){
+  const cat=(DATA.personal||[]).find(p=>p.id===catId);
+  const vino=(document.getElementById('cv_'+catId)||{}).checked||false;
+  const horas=parseFloat((document.getElementById('ch_'+catId)||{}).value)||0;
+  const nota=((document.getElementById('cn_'+catId)||{}).value||'').trim();
+  const rid=catFecha+'_'+catId;
+  const rec={ catId, catNombre:cat?cat.nombre:'', fecha:catFecha, vino, horas, nota, registradoPor:(currentUser&&currentUser.nombre)||'', actualizadoEn:serverTimestamp() };
+  try{ await setDoc(doc(db,'asist_catedraticos',rid),rec); }catch(err){ alert('No se pudo guardar: '+err.message); return; }
+  const i=catRegs.findIndex(r=>r.id===rid);
+  if(i>=0) catRegs[i]={id:rid,...rec}; else catRegs.push({id:rid,...rec});
+  renderCatedraticos();
+}
+function renderCatedraticos(){
+  const c=document.getElementById('mainContent');
+  const cats=(DATA.personal||[]).filter(p=>p.activo!==false && p.tipo==='catedratico').sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const mes=catFecha.slice(0,7);
+  const regDia={}; catRegs.filter(r=>r.fecha===catFecha).forEach(r=>regDia[r.catId]=r);
+  const esc=s=>(s||'').toString().replace(/"/g,'&quot;');
+  const filas=cats.map(p=>{
+    const r=regDia[p.id]||{};
+    return `<tr>
+      <td>${p.nombre}${p.cargo?` <span style="color:#999;font-size:11px">· ${p.cargo}</span>`:''}</td>
+      <td style="text-align:center"><input type="checkbox" id="cv_${p.id}" ${r.vino?'checked':''} onchange="guardarCatReg('${p.id}')" style="width:20px;height:20px"/></td>
+      <td><input type="number" id="ch_${p.id}" value="${r.horas||''}" min="0" step="0.5" placeholder="0" onchange="guardarCatReg('${p.id}')" style="width:70px"/></td>
+      <td><input type="text" id="cn_${p.id}" value="${esc(r.nota)}" placeholder="Materia / nota" onchange="guardarCatReg('${p.id}')" style="width:100%;min-width:120px"/></td>
+    </tr>`;
+  }).join('');
+  const filasR=cats.map(p=>{
+    const rr=catRegs.filter(r=>r.catId===p.id && String(r.fecha).slice(0,7)===mes && r.vino);
+    const dias=rr.length; const horas=rr.reduce((a,r)=>a+(Number(r.horas)||0),0);
+    return `<tr><td>${p.nombre}</td><td style="text-align:center"><b>${dias}</b></td><td style="text-align:center"><b>${horas}</b></td></tr>`;
+  }).join('');
+  const fechaTxt=new Date(catFecha+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'});
+  const mesTxt=new Date(mes+'-01T00:00:00').toLocaleDateString('es-CO',{month:'long',year:'numeric'});
+  c.innerHTML=`
+    <div class="no-print" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+      <div><label style="font-size:12px;color:#888;display:block;margin-bottom:2px">Día</label><input type="date" value="${catFecha}" max="${hoyLocal()}" onchange="cambiarCatFecha(this.value)"/></div>
+      <button class="vista-btn" style="background:var(--teal);color:#fff;border-color:var(--teal)" onclick="window.print()">🖨️ Imprimir / PDF</button>
+    </div>
+    ${cats.length?`
+    <div class="repgrupo">
+      <h3>🧑‍🏫 Asistencia de catedráticos — ${fechaTxt}</h3>
+      <div class="sub">Marca quién vino, cuántas horas y una nota. Se guarda solo.</div>
+      <table class="rtab"><thead><tr><th>Catedrático</th><th>Vino</th><th>Horas</th><th>Nota</th></tr></thead><tbody>${filas}</tbody></table>
+    </div>
+    <div class="repgrupo">
+      <h3>📅 Resumen de ${mesTxt}</h3>
+      <div class="sub">Días que vino y total de horas del mes — para calcular el pago</div>
+      <table class="rtab"><thead><tr><th>Catedrático</th><th>Días</th><th>Horas</th></tr></thead><tbody>${filasR}</tbody></table>
+    </div>`
+    :'<div class="empty">No hay catedráticos. Agrégalos en la app de Pagos → Nómina → 👥 Personal (tipo Catedrático).</div>'}`;
+}
+
 // ─── RECORDATORIO DE CUMPLEAÑOS ───────────────────────────────────────────────
 // Estudiantes cuyo cumpleaños "aplica" hoy. Si hoy es lunes, incluye sábado y
 // domingo (los del fin de semana se recuerdan el siguiente día de clase).
