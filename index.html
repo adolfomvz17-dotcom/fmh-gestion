@@ -1813,6 +1813,7 @@ async function refrescarNomina(){
       const cur=dirMap[p.id];
       if(!cur || cur.nombre!==want.nombre || cur.cargo!==want.cargo || cur.fechaNacimiento!==want.fechaNacimiento || cur.activo!==want.activo){
         batch.set(doc(db,'personal_dir',p.id),want); ops++;
+        if(cur) Object.assign(cur,want); else DATA.personalDir.push({id:p.id,...want});
       }
     });
     if(ops>0) await batch.commit();
@@ -1982,7 +1983,12 @@ window.saveReemplazo=async function(){
 
 window.openPersonal=function(){
   const lista=(DATA.nominaPersonal||[]).slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
-  const filas=lista.map(p=>`<tr><td>${p.nombre}${p.activo===false?' <span style="color:#c62828;font-size:11px">(inactivo)</span>':''}</td><td>${p.tipo==='catedratico'?'Catedrático':'Planta'}</td><td>${fmt(p.salario||0)}</td><td><button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="openPersonaEdit('${p.id}')">Editar</button></td></tr>`).join('');
+  const filas=lista.map(p=>{
+    const est = p.activo===false
+      ? `<button class="btn btn-blue" style="padding:5px 10px;font-size:12px" onclick="reactivarPersona('${p.id}')">↩️ Reactivar</button>`
+      : `<button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="inactivarPersona('${p.id}')">😴 Inactivar</button>`;
+    return `<tr><td>${p.nombre}${p.activo===false?' <span style="color:#c62828;font-size:11px">(inactivo)</span>':''}${p.cargo?` <span style="color:#999;font-size:11px">· ${p.cargo}</span>`:''}</td><td>${p.tipo==='catedratico'?'Catedrático':'Planta'}</td><td>${fmt(p.salario||0)}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap">${est}<button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="openPersonaEdit('${p.id}')">Editar</button></div></td></tr>`;
+  }).join('');
   const html=`<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div class="modal" style="max-width:640px">
     <div class="modal-header"><span class="modal-title">👥 Personal de nómina</span><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
     <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
@@ -2042,6 +2048,18 @@ window.savePersona=async function(id){
     document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
     await refrescarNomina(); navigate('nomina');
   }catch(err){ alert('No se pudo: '+err.message); btn.disabled=false; btn.textContent='Guardar'; }
+};
+window.reactivarPersona=async function(id){
+  const p=(DATA.nominaPersonal||[]).find(x=>x.id===id); if(!p) return;
+  if(!confirm(`¿Reactivar a "${p.nombre}" en la nómina? Volverá a aparecer y a generar sueldo.`)) return;
+  try{ await updateDoc(doc(db,'nomina_personal',id),{activo:true, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario}); await refrescarNomina(); document.querySelectorAll('.modal-overlay').forEach(m=>m.remove()); openPersonal(); }
+  catch(err){ alert('No se pudo: '+err.message); }
+};
+window.inactivarPersona=async function(id){
+  const p=(DATA.nominaPersonal||[]).find(x=>x.id===id); if(!p) return;
+  if(!confirm(`¿Inactivar a "${p.nombre}"?\n\nDejará de aparecer y de generar sueldo, pero no se borra. Podrás reactivarla cuando vuelva.`)) return;
+  try{ await updateDoc(doc(db,'nomina_personal',id),{activo:false, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario}); await refrescarNomina(); document.querySelectorAll('.modal-overlay').forEach(m=>m.remove()); openPersonal(); }
+  catch(err){ alert('No se pudo: '+err.message); }
 };
 window.traerProfesoras=async function(){
   const existentes=new Set((DATA.nominaPersonal||[]).map(p=>(p.nombre||'').trim().toLowerCase()));
@@ -2189,9 +2207,11 @@ window.eliminarGrupo=async function(idx){
 };
 
 // ─── PROFESORAS ───────────────────────────────────────────────────────────────
+let verInactivasProf=false;
 function renderProfesoras(c){
   const esAdmin=currentUser.rol==='admin';
   const profes=activos(DATA.profesoras).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const inactivas=(DATA.profesoras||[]).filter(p=>p.activo===false).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
   c.innerHTML=`
     ${!esAdmin?`<div class="lock-banner">🔒 Como Coordinadora puedes asignar grupos a las profesoras. Crear, editar datos o inactivar es solo del Presidente.</div>`:''}
     ${esAdmin?`<div class="toolbar"><button class="btn btn-pink" onclick="openModalProfe()">+ Agregar profesora</button></div>`:''}
@@ -2212,7 +2232,18 @@ function renderProfesoras(c){
           </tr>`;
         }).join(''):`<tr><td colspan="4" class="empty">No hay profesoras registradas.</td></tr>`}</tbody>
       </table>
-    </div>`;
+    </div>
+    ${esAdmin&&inactivas.length?`
+    <div style="margin-top:14px">
+      <button class="btn btn-outline" onclick="toggleInactivasProf()">${verInactivasProf?'▲ Ocultar inactivas':'😴 Ver profesoras inactivas ('+inactivas.length+')'}</button>
+    </div>
+    ${verInactivasProf?`<div class="card" style="margin-top:10px">
+      <div class="card-header"><span class="card-title">😴 Profesoras inactivas (${inactivas.length})</span></div>
+      <table class="responsive">
+        <thead><tr><th>Nombre</th><th>Correo</th><th>Acciones</th></tr></thead>
+        <tbody>${inactivas.map(p=>`<tr><td data-label="Nombre"><b>${p.nombre}</b></td><td data-label="Correo">${p.email||p.usuario||''}</td><td data-label="Acciones"><button class="btn btn-blue btn-sm" onclick="reactivarProfe('${p.id}')">↩️ Reactivar</button></td></tr>`).join('')}</tbody>
+      </table>
+    </div>`:''}`:''}`;
 }
 
 window.openModalProfe=function(id){
@@ -2270,12 +2301,22 @@ window.saveProfe=async function(id){
 
 window.inactivarProfe=async function(id){
   const p=DATA.profesoras.find(x=>x.id===id);
-  if(!confirm(`¿Inactivar a "${p.nombre}"?\n\nNo podrá iniciar sesión, pero el dato no se borra.`))return;
+  if(!confirm(`¿Inactivar a "${p.nombre}"?\n\nNo podrá iniciar sesión, pero el dato no se borra. Podrás reactivarla cuando vuelva.`))return;
   try{
     await updateDoc(doc(db,'profesoras',id),{activo:false, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
     p.activo=false;
     renderProfesoras(document.getElementById('mainContent'));
   }catch(err){ alert('No se pudo inactivar: '+err.message); }
+};
+window.toggleInactivasProf=function(){ verInactivasProf=!verInactivasProf; renderProfesoras(document.getElementById('mainContent')); };
+window.reactivarProfe=async function(id){
+  const p=DATA.profesoras.find(x=>x.id===id);
+  if(!confirm(`¿Reactivar a "${p.nombre}"?\n\nPodrá iniciar sesión otra vez. Acuérdate de asignarle sus grupos.`))return;
+  try{
+    await updateDoc(doc(db,'profesoras',id),{activo:true, modificadoEn:serverTimestamp(), modificadoPor:currentUser.usuario});
+    p.activo=true;
+    renderProfesoras(document.getElementById('mainContent'));
+  }catch(err){ alert('No se pudo reactivar: '+err.message); }
 };
 
 </script>
